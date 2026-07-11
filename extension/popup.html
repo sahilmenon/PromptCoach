@@ -153,9 +153,12 @@
         <article class="card">
           <p class="label">LOCAL TRANSCRIPTS</p>
           <h2>Import JSONL, JSON, or text</h2>
-          <p>Files are parsed locally. Raw transcript text is not uploaded.</p>
+          <p>Files are parsed locally. Re-evaluate opens the audit dashboard,
+            which analyzes your prompts with Gemini using your own key.</p>
           <label class="file">Choose files<input id="files" type="file" accept=".jsonl,.json,.txt" multiple></label>
           <pre id="summary" hidden></pre>
+          <button class="action" id="reevaluate" type="button" disabled>Re-evaluate prompts</button>
+          <div class="status" id="import-status"></div>
         </article>
       </section>
     </div>
