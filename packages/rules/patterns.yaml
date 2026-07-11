@@ -1,0 +1,92 @@
+# Anti-pattern rule pack for PromptLens detectors (P01–P10)
+patterns:
+  P01:
+    name: Vague filler
+    severity: medium
+    suggestion: Replace with a concrete verb and a measurable constraint.
+    regex:
+      - "(?i)please\\s+carefully"
+      - "(?i)be\\s+thorough(?:\\s+and\\s+accurate)?"
+      - "(?i)in\\s+as\\s+much\\s+detail\\s+as\\s+possible"
+      - "(?i)don't\\s+miss\\s+anything"
+      - "(?i)be\\s+comprehensive"
+      - "(?i)somehow"
+  P02:
+    name: Politeness tax
+    severity: low
+    suggestion: Remove please/thanks padding — models do not need etiquette tokens.
+    regex:
+      - "(?i)\\bplease\\b"
+      - "(?i)\\bthanks(?:\\s+so\\s+much)?\\b"
+      - "(?i)\\bkindly\\b"
+      - "(?i)\\bkind\\s+regards\\b"
+      - "(?i)\\bwarm\\s+regards\\b"
+      - "(?i)\\bi\\s+would\\s+really\\s+appreciate\\b"
+  P03:
+    name: Redundant constraints
+    severity: medium
+    suggestion: Keep the most specific phrasing; delete paraphrased duplicates.
+    # Detected in code via near-duplicate sentence similarity / repeated phrases
+    flags:
+      - redundant_sentences
+  P04:
+    name: Missing output format
+    severity: medium
+    suggestion: Add an explicit output contract (JSON schema, bullets, length budget).
+    flags:
+      - missing_format
+  P05:
+    name: Mega-prompt / multi-task
+    severity: high
+    suggestion: Split into one task per prompt; lead with the primary ask.
+    regex:
+      - "(?i)\\band\\s+also\\b"
+      - "(?i)\\balso\\s+make\\b"
+      - "(?i)\\balso\\s+fix\\b"
+      - "(?i)\\balso\\s+summarize\\b"
+      - "(?i)\\balso\\s+generate\\b"
+  P06:
+    name: Context dump
+    severity: high
+    suggestion: Keep only excerpts that affect the decision; drop life/weather/noise.
+    flags:
+      - context_dump
+  P07:
+    name: Hedge pile
+    severity: medium
+    suggestion: Keep a single uncertainty policy instead of stacking hedges.
+    regex:
+      - "(?i)if\\s+you'?re\\s+unsure"
+      - "(?i)if\\s+you\\s+can'?t\\s+complete"
+      - "(?i)don'?t\\s+guess"
+      - "(?i)never\\s+hallucinate"
+      - "(?i)if\\s+incomplete\\s+say\\s+so"
+  P08:
+    name: Role without task
+    severity: medium
+    suggestion: One short role line plus a clear task verb.
+    flags:
+      - role_spam
+    regex:
+      - "(?i)you\\s+are\\s+a\\s+"
+  P09:
+    name: Re-pasted background
+    severity: low
+    suggestion: Put stable background in system/memory; reference it instead of re-pasting.
+    flags:
+      - history_level
+  P10:
+    name: Detail bait
+    severity: medium
+    suggestion: Set a length or section budget instead of “explain in detail”.
+    regex:
+      - "(?i)explain\\s+(?:in\\s+)?detail"
+      - "(?i)explain\\b[^.!?]{0,40}\\bdetail"
+      - "(?i)in\\s+(?:as\\s+much\\s+)?detail"
+      - "(?i)in\\s+extreme\\s+detail"
+      - "(?i)deep\\s+dive"
+      - "(?i)exhaustive"
+      - "(?i)comprehensively"
+      - "(?i)\\bthoroughly\\b"
+      - "(?i)great\\s+detail"
+      - "(?i)lots\\s+of\\s+detail"

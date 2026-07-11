@@ -1,5 +1,5 @@
 /**
- * Shared types used across tokenlean components.
+ * Shared types used across LLMGuide components.
  * Component-internal types live in their own modules.
  */
 

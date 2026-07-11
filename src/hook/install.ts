@@ -17,23 +17,22 @@ function hookCommand(): string {
 }
 
 /**
- * A command is ours if it carries the tokenlean marker (the npm-installed
- * path always contains both substrings) or exactly matches the command this
- * checkout would write (covers dev checkouts whose path lacks "tokenlean").
+ * A command is ours if it carries the current or legacy package marker, or
+ * exactly matches the command this checkout would write.
  */
-function isTokenleanCommand(command: unknown): boolean {
+function isLlmGuideCommand(command: unknown): boolean {
   if (typeof command !== 'string') return false;
   if (command === hookCommand()) return true;
-  return command.includes('tokenlean') && command.includes('hook.js');
+  return (command.includes('llmguide') || command.includes('tokenlean')) && command.includes('hook.js');
 }
 
-function entryIsTokenlean(entry: unknown): boolean {
+function entryIsLlmGuide(entry: unknown): boolean {
   if (entry === null || typeof entry !== 'object') return false;
   const e = entry as Record<string, unknown>;
-  if (isTokenleanCommand(e.command)) return true;
+  if (isLlmGuideCommand(e.command)) return true;
   if (Array.isArray(e.hooks)) {
     for (const h of e.hooks) {
-      if (h !== null && typeof h === 'object' && isTokenleanCommand((h as Record<string, unknown>).command)) {
+      if (h !== null && typeof h === 'object' && isLlmGuideCommand((h as Record<string, unknown>).command)) {
         return true;
       }
     }
@@ -42,12 +41,12 @@ function entryIsTokenlean(entry: unknown): boolean {
 }
 
 /** Detect this package's hook using the same rules as install/uninstall. */
-export function hasTokenleanHook(settings: unknown): boolean {
+export function hasLlmGuideHook(settings: unknown): boolean {
   if (settings === null || typeof settings !== 'object' || Array.isArray(settings)) return false;
   const hooks = (settings as Record<string, unknown>).hooks;
   if (hooks === null || typeof hooks !== 'object' || Array.isArray(hooks)) return false;
   const entries = (hooks as Record<string, unknown>).UserPromptSubmit;
-  return Array.isArray(entries) && entries.some(entryIsTokenlean);
+  return Array.isArray(entries) && entries.some(entryIsLlmGuide);
 }
 
 /**
@@ -77,10 +76,11 @@ function readSettingsForWrite(settingsPath: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-/** Copy settings to <path>.tokenlean-backup before the first modifying write. */
+/** Copy settings before the first modifying write. */
 function backupOnce(settingsPath: string): void {
   if (!fs.existsSync(settingsPath)) return;
-  const backupPath = settingsPath + '.tokenlean-backup';
+  const backupPath = settingsPath + '.llmguide-backup';
+  if (fs.existsSync(settingsPath + '.tokenlean-backup')) return;
   if (fs.existsSync(backupPath)) return;
   fs.copyFileSync(settingsPath, backupPath);
 }
@@ -128,7 +128,7 @@ export function installHook(settingsPath?: string): {
     );
   }
 
-  if (entries.some(entryIsTokenlean)) {
+  if (entries.some(entryIsLlmGuide)) {
     return { installed: true, already: true, path: p };
   }
 
@@ -144,7 +144,7 @@ export function installHook(settingsPath?: string): {
 }
 
 /**
- * Remove only tokenlean's hook entries; every other hook and key survives.
+ * Remove only LLMGuide's current or legacy hook entries; every other hook survives.
  * Drops hooks.UserPromptSubmit (and hooks) if they end up empty. A missing
  * or unreadable file is left alone and reported as not removed.
  */
@@ -171,7 +171,7 @@ export function uninstallHook(settingsPath?: string): { removed: boolean; path: 
   const entries = hooksObj.UserPromptSubmit;
   if (!Array.isArray(entries)) return { removed: false, path: p };
 
-  const kept = entries.filter((entry) => !entryIsTokenlean(entry));
+  const kept = entries.filter((entry) => !entryIsLlmGuide(entry));
   if (kept.length === entries.length) return { removed: false, path: p };
 
   backupOnce(p);

@@ -1,7 +1,7 @@
 (() => {
   const existing = document.getElementById("tokenlean-floating-root");
   if (existing) {
-    // Re-injection should not toggle visibility — only TOKENLEAN_TOGGLE does.
+    // Re-injection should not toggle visibility — only TOKENLEAN_TOGGLE / LLMGUIDE_TOGGLE does.
     return;
   }
 
@@ -29,7 +29,7 @@
   host.setAttribute("data-tokenlean", "floating-widget");
   document.documentElement.appendChild(host);
   const root = host.attachShadow({ mode: "open" });
-  const logoUrl = chrome.runtime.getURL("icons/tokenlean-logo.png");
+  const logoUrl = chrome.runtime.getURL("icons/llmguide-logo.png");
 
   const isEditableRoot = (node) => {
     if (!(node instanceof HTMLElement) || host.contains(node)) return false;
@@ -566,18 +566,18 @@
       }
     </style>
 
-    <div class="toolbar" id="toolbar" role="toolbar" aria-label="tokenlean selection tools" hidden>
+    <div class="toolbar" id="toolbar" role="toolbar" aria-label="LLMGuide selection tools" hidden>
       <span class="tb-brand" aria-hidden="true"><img src="${logoUrl}" alt=""></span>
       <button class="tb-btn primary" id="tb-analyze" type="button">Analyze</button>
     </div>
 
-    <button class="fab" id="fab" type="button" title="Open tokenlean" aria-label="Open tokenlean" aria-expanded="false">
+    <button class="fab" id="fab" type="button" title="Open LLMGuide" aria-label="Open LLMGuide" aria-expanded="false">
       <img src="${logoUrl}" alt="">
     </button>
-    <section class="widget" id="widget" role="dialog" aria-label="tokenlean tools">
+    <section class="widget" id="widget" role="dialog" aria-label="LLMGuide tools">
       <header class="top">
         <span class="mark"><img src="${logoUrl}" alt=""></span>
-        <span class="name">tokenlean</span>
+        <span class="name">LLMGuide</span>
         <span class="runtime" id="runtime" title="Analysis runtime">Checking bridge…</span>
         <button class="icon" id="close" type="button" title="Close">×</button>
       </header>
@@ -611,9 +611,9 @@
           <article class="card">
             <p class="label">Active page</p>
             <h2>Inspect visible context</h2>
-            <p>Reads a bounded sample only after you click.</p>
-            <button class="action" id="inspect-page" type="button">Inspect this page</button>
-            <pre id="inspection" hidden></pre>
+            <p>Scrape your recent activity on Gemini to generate a comprehensive prompt efficiency report.</p>
+            <button class="action" id="inspect-page" type="button">Run Deep Prompt Efficiency Audit</button>
+            <div class="status" id="inspect-status"></div>
           </article>
         </section>
         <section class="panel" id="import">
@@ -1720,14 +1720,58 @@
   }, true);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "TOKENLEAN_PING") {
+    if (message?.type === "TOKENLEAN_PING" || message?.type === "LLMGUIDE_PING") {
       sendResponse({ ok: true });
       return false;
     }
-    if (message?.type === "TOKENLEAN_TOGGLE") {
+    if (message?.type === "TOKENLEAN_TOGGLE" || message?.type === "LLMGUIDE_TOGGLE") {
       host.hidden = !host.hidden;
-      sendResponse({ ok: true, hidden: host.hidden });
+      sendResponse({ ok: true, hidden: host.hidden, success: true });
       return false;
+    }
+    if (message?.action === "read_prompt") {
+      const selected = findSelectedPromptField();
+      const text = selected ? selected.text : (lastEditable ? readEditable(lastEditable) : "");
+      sendResponse({ success: true, text });
+      return false;
+    }
+    if (message?.action === "insert_prompt") {
+      const value = String(message.value || "");
+      const target = (lastEditable && document.contains(lastEditable) ? lastEditable : null)
+        || findBestComposer();
+      if (!target) {
+        sendResponse({ success: false, error: "No editable field focused on page." });
+        return false;
+      }
+      const ok = writeEditable(target, value);
+      if (ok) lastEditable = target;
+      sendResponse({ success: ok });
+      return false;
+    }
+    if (message?.action === "harvest_prompts") {
+      const selectors = {
+        userPrompts: 'user-query, .query-text, .user-message, div[data-message-author="user"]',
+        userPromptsFallback: 'div.query-content, div.user-query, .query-content',
+      };
+      let promptElements = Array.from(document.querySelectorAll(selectors.userPrompts));
+      if (promptElements.length === 0) {
+        promptElements = Array.from(document.querySelectorAll(selectors.userPromptsFallback));
+      }
+      const prompts = promptElements
+        .map((el) => el.innerText.replace(/\s+/g, " ").trim())
+        .filter((text) => text.length > 0);
+      if (prompts.length === 0) {
+        sendResponse({ success: false, error: "No prompts found on the page yet." });
+        return false;
+      }
+      chrome.storage.local.set({ recentPrompts: prompts.slice(-10) }, () => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          sendResponse({ success: true });
+        }
+      });
+      return true;
     }
     return false;
   });
@@ -1753,14 +1797,38 @@
   };
 
   root.querySelector("#inspect-page").onclick = () => {
-    const output = root.querySelector("#inspection");
-    output.hidden = false;
-    const headings = [...document.querySelectorAll("h1,h2,h3")]
-      .filter((node) => !host.contains(node)).slice(0, 12)
-      .map((node) => node.innerText.trim()).filter(Boolean);
-    const text = (document.body?.innerText || "").replace(/\s+/g, " ").trim().slice(0, 2800);
-    const fields = document.querySelectorAll("textarea,input[type='text'],[contenteditable='true']").length;
-    output.textContent = `Title: ${document.title}\nURL: ${location.href}\nEditable fields: ${fields}\nHeadings: ${headings.join(" · ") || "None"}\n\nVisible text sample:\n${text || "None"}`;
+    const inspectStatus = root.querySelector("#inspect-status");
+    if (!location.href.includes("gemini.google.com")) {
+      if (inspectStatus) {
+        inspectStatus.textContent = "Deep prompt auditing is currently optimized for Gemini. Open a Gemini chat to run this analysis.";
+      }
+      return;
+    }
+    if (inspectStatus) inspectStatus.textContent = "Harvesting prompts from Gemini…";
+    const selectors = {
+      userPrompts: 'user-query, .query-text, .user-message, div[data-message-author="user"]',
+      userPromptsFallback: 'div.query-content, div.user-query, .query-content',
+    };
+    let promptElements = Array.from(document.querySelectorAll(selectors.userPrompts));
+    if (promptElements.length === 0) {
+      promptElements = Array.from(document.querySelectorAll(selectors.userPromptsFallback));
+    }
+    const prompts = promptElements
+      .map((el) => el.innerText.replace(/\s+/g, " ").trim())
+      .filter((text) => text.length > 0);
+    if (prompts.length === 0) {
+      if (inspectStatus) inspectStatus.textContent = "No user prompts found on the page yet.";
+      return;
+    }
+    const recentPrompts = prompts.slice(-10);
+    chrome.storage.local.set({ recentPrompts }, () => {
+      if (chrome.runtime.lastError) {
+        if (inspectStatus) inspectStatus.textContent = chrome.runtime.lastError.message;
+        return;
+      }
+      if (inspectStatus) inspectStatus.textContent = "Opening dashboard…";
+      chrome.runtime.sendMessage({ action: "open_dashboard" });
+    });
   };
 
   root.querySelector("#files").onchange = async (event) => {

@@ -2,9 +2,15 @@ import type { DB } from '../db';
 import { metaGetJson } from '../db';
 import { nowMs } from '../config';
 import {
+  AVOIDABLE_EFF_TOKENS_DEFAULT,
+  AVOIDABLE_EFF_TOKENS_PER_FINDING,
   CACHED_READ_WEIGHT,
   ENERGY_KWH_PER_MTOK,
   ESTIMATE_LABEL,
+  KWH_PER_EV_KM,
+  KWH_PER_LED_BULB_HOUR,
+  KWH_PER_SMARTPHONE_CHARGE,
+  WASTE_PERSIST_TURNS_CAP,
   WATER_L_PER_KWH_LIFECYCLE,
   WATER_L_PER_KWH_ONSITE,
 } from '../constants';
@@ -33,6 +39,13 @@ export interface BaselineMeta {
   effTokensPerSession: number;
 }
 
+/** Human-scale equivalences for an energy range (SPEC §7: still ranges). */
+export interface Equivalents {
+  smartphoneCharges: Range;
+  ledBulbHours: Range;
+  evKm: Range;
+}
+
 /** All numbers are ranges (SPEC §7): never a single unqualified figure. */
 export interface EnvEstimate {
   label: string;
@@ -43,7 +56,106 @@ export interface EnvEstimate {
   waterLifecycleL: Range | null;
   /** Footprint of the usage in the window itself, always present. */
   windowFootprintKwh: Range;
+  /** Tangible equivalences for the window footprint, always present. */
+  windowEquivalents: Equivalents;
   notes: string[];
+}
+
+/** Convert an energy range into tangible, relatable equivalences. */
+export function equivalentsFor(kwh: Range): Equivalents {
+  const per = (factor: number): Range => ({
+    low: factor > 0 ? kwh.low / factor : 0,
+    high: factor > 0 ? kwh.high / factor : 0,
+  });
+  return {
+    smartphoneCharges: per(KWH_PER_SMARTPHONE_CHARGE.low),
+    ledBulbHours: per(KWH_PER_LED_BULB_HOUR.low),
+    evKm: per(KWH_PER_EV_KM.low),
+  };
+}
+
+/** One line of the avoidable-waste ledger: a finding category and its cost. */
+export interface WasteLedgerRow {
+  category: string;
+  count: number;
+  effTokens: Range;
+}
+
+/** Prospective "fix these to consume less" ledger derived from findings. */
+export interface WasteLedger {
+  rows: WasteLedgerRow[];
+  totalEffTokens: Range;
+  energyKwh: Range;
+  equivalents: Equivalents;
+}
+
+/**
+ * Recurring-cost multiplier for content injected in a session of `turnCount`
+ * turns: paid once uncached, then re-sent (cache-weighted) on later turns up
+ * to the compaction cap. min 1 (a single-turn session costs it once).
+ */
+function persistenceMultiplier(turnCount: number): number {
+  const persisted = Math.min(Math.max(turnCount - 1, 0), WASTE_PERSIST_TURNS_CAP);
+  return 1 + CACHED_READ_WEIGHT * persisted;
+}
+
+/**
+ * Estimate avoidable consumption from the findings, using the RECURRING-cost
+ * model: each wasteful artifact lingers in its session's context and is
+ * re-sent every later turn (constants.ts). Per-pattern base costs are
+ * illustrative bounds, NOT measurements; the report labels them as such.
+ * Rows are aggregated by category and sorted by worst-case cost.
+ */
+export function estimateWasteLedger(db: DB, cutoffMs: number | null): WasteLedger {
+  // Findings grouped by (category, session) so each group can be scaled by
+  // that session's own length — a finding in a long session costs more.
+  const groups = db
+    .prepare(
+      `SELECT f.category AS category,
+              COALESCE(s.turn_count, 0) AS turnCount,
+              COUNT(*) AS n
+       FROM findings f JOIN sessions s ON s.id = f.session_id
+       ${cutoffMs === null ? '' : 'WHERE s.started_at >= ?'}
+       GROUP BY f.category, f.session_id`
+    )
+    .all(...(cutoffMs === null ? [] : [cutoffMs])) as {
+    category: string;
+    turnCount: number;
+    n: number;
+  }[];
+
+  const byCategory = new Map<string, Range>();
+  let low = 0;
+  let high = 0;
+  for (const g of groups) {
+    const per = AVOIDABLE_EFF_TOKENS_PER_FINDING[g.category] ?? AVOIDABLE_EFF_TOKENS_DEFAULT;
+    const mult = persistenceMultiplier(g.turnCount);
+    const addLow = per.low * g.n * mult;
+    const addHigh = per.high * g.n * mult;
+    const acc = byCategory.get(g.category) ?? { low: 0, high: 0 };
+    byCategory.set(g.category, { low: acc.low + addLow, high: acc.high + addHigh });
+    low += addLow;
+    high += addHigh;
+  }
+
+  // Count per category (for display) comes from the same grouped rows.
+  const counts = new Map<string, number>();
+  for (const g of groups) counts.set(g.category, (counts.get(g.category) ?? 0) + g.n);
+
+  const rows: WasteLedgerRow[] = [...byCategory.entries()]
+    .map(([category, effTokens]) => ({
+      category,
+      count: counts.get(category) ?? 0,
+      effTokens,
+    }))
+    .sort((a, b) => b.effTokens.high - a.effTokens.high);
+
+  const totalEffTokens: Range = { low, high };
+  const energyKwh: Range = {
+    low: (low / 1e6) * ENERGY_KWH_PER_MTOK.low,
+    high: (high / 1e6) * ENERGY_KWH_PER_MTOK.high,
+  };
+  return { rows, totalEffTokens, energyKwh, equivalents: equivalentsFor(energyKwh) };
 }
 
 /** Resolve a --since window into a started_at cutoff; null means all time. */
@@ -95,6 +207,7 @@ export function estimateEnvironment(
     low: (windowEff / 1e6) * ENERGY_KWH_PER_MTOK.low,
     high: (windowEff / 1e6) * ENERGY_KWH_PER_MTOK.high,
   };
+  const windowEquivalents = equivalentsFor(windowFootprintKwh);
   const notes: string[] = [
     `cache-read tokens are weighted at ${Math.round(
       CACHED_READ_WEIGHT * 100
@@ -112,6 +225,7 @@ export function estimateEnvironment(
       waterOnsiteL: null,
       waterLifecycleL: null,
       windowFootprintKwh,
+      windowEquivalents,
       notes,
     };
   }
@@ -143,6 +257,7 @@ export function estimateEnvironment(
     waterOnsiteL,
     waterLifecycleL,
     windowFootprintKwh,
+    windowEquivalents,
     notes,
   };
 }

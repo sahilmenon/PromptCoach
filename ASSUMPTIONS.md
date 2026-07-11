@@ -1,6 +1,6 @@
 # Assumptions
 
-Every environmental figure tokenlean prints is derived from the constants in [`src/constants.ts`](src/constants.ts). This file documents each constant, where it comes from, and why the output is always a labeled range rather than a number.
+Every environmental figure LLMGuide prints is derived from the constants in [`src/constants.ts`](src/constants.ts). This file documents each constant, where it comes from, and why the output is always a labeled range rather than a number.
 
 ## Constants
 
@@ -24,4 +24,4 @@ We count a cache-read token at **10% of an uncached token**. Rationale: a cached
 
 There are no first-party energy or water figures for Claude inference. Everything else that determines the real number is also unknown to us: model size and architecture, hardware generation, batch sizes and utilization, context-length distribution, datacenter PUE and WUE, the grid mix at the sites serving a given request, and how these change over time. Each of these plausibly moves the result by a factor of 2 or more.
 
-A single number would therefore convey false precision, which is worse than no number: it invites downstream citation as fact. So tokenlean always prints a LOW–HIGH range derived from sourced bounds, always attaches the "rough estimate" label, and never emits an unqualified figure — this is a hard output rule, not a formatting preference. The direction, however, is not uncertain: fewer wasted tokens is strictly less compute, less energy, and less water. The ranges exist to keep the magnitude honest while the direction does the motivating.
+A single number would therefore convey false precision, which is worse than no number: it invites downstream citation as fact. So LLMGuide always prints a LOW–HIGH range derived from sourced bounds, always attaches the "rough estimate" label, and never emits an unqualified figure — this is a hard output rule, not a formatting preference. The direction, however, is not uncertain: fewer wasted tokens is strictly less compute, less energy, and less water. The ranges exist to keep the magnitude honest while the direction does the motivating.

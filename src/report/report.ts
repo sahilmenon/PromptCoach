@@ -1,18 +1,22 @@
 import type { DB } from '../db';
 import { getSelfSpend, metaGet, metaGetJson, metaSet } from '../db';
 import { nowMs } from '../config';
-import { CACHED_READ_WEIGHT } from '../constants';
+import { CACHED_READ_WEIGHT, WASTE_PERSIST_TURNS_CAP } from '../constants';
 import {
+  equivalentsFor,
   estimateEnvironment,
+  estimateWasteLedger,
   formatRange,
   windowCutoffMs,
   type BaselineMeta,
   type EnvEstimate,
+  type Range,
+  type WasteLedger,
 } from './envEstimate';
 import { buildClaudeMdDiffs, type ClaudeMdDiff } from './claudeMdDiff';
 
 /**
- * Report data (SPEC §4.5). `tokenlean report --json` dumps this verbatim,
+ * Report data (SPEC §4.5). `llmguide report --json` dumps this verbatim,
  * so every field is plain JSON (numbers, strings, nulls, arrays).
  */
 
@@ -71,7 +75,7 @@ export interface SelfSpendReport {
   inputTokens: number;
   outputTokens: number;
   usd: number;
-  /** input + output over ALL turns, all time (the usage tokenlean analyzed). */
+  /** Input + output over all turns, all time (the usage LLMGuide analyzed). */
   analyzedTokens: number;
   /** (self input+output) / analyzedTokens as a percentage; null when 0/0. */
   overheadPct: number | null;
@@ -87,6 +91,8 @@ export interface ReportData {
   digest: HookDigest;
   selfSpend: SelfSpendReport;
   env: EnvEstimate;
+  /** Estimated avoidable consumption if the findings were fixed. */
+  wasteLedger: WasteLedger;
 }
 
 export function buildReport(db: DB, opts?: { sinceDays?: number }): ReportData {
@@ -99,6 +105,7 @@ export function buildReport(db: DB, opts?: { sinceDays?: number }): ReportData {
   const digest = buildDigest(db); // reads meta 'last_report_ts' — before update
   const selfSpend = buildSelfSpend(db);
   const env = estimateEnvironment(db, opts);
+  const wasteLedger = estimateWasteLedger(db, cutoff);
 
   metaSet(db, 'last_report_ts', String(generatedAt));
 
@@ -111,6 +118,7 @@ export function buildReport(db: DB, opts?: { sinceDays?: number }): ReportData {
     digest,
     selfSpend,
     env,
+    wasteLedger,
   };
 }
 
@@ -304,12 +312,14 @@ export function renderReport(data: ReportData): string {
   const windowLabel =
     data.sinceDays === null ? 'all time' : `last ${data.sinceDays} day(s)`;
   lines.push(
-    `tokenlean report — generated ${new Date(data.generatedAt).toISOString()} — window: ${windowLabel}`
+    `LLMGuide report — generated ${new Date(data.generatedAt).toISOString()} — window: ${windowLabel}`
   );
   lines.push('='.repeat(WIDTH));
 
+  renderHeadline(lines, data.env);
   renderScorecard(lines, data.scorecard);
   renderFindings(lines, data.findings);
+  renderWasteLedger(lines, data.wasteLedger, data.env.windowFootprintKwh);
   renderClaudeMd(lines, data.claudeMdDiffs);
   renderDigest(lines, data.digest);
   renderSelfSpend(lines, data.selfSpend);
@@ -317,6 +327,32 @@ export function renderReport(data: ReportData): string {
 
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * The hero block: lead with what you consumed and what you've saved, in
+ * tangible terms. Consumption is invisible and weightless by default — making
+ * it concrete is the whole point of the tool.
+ */
+function renderHeadline(lines: string[], env: EnvEstimate): void {
+  lines.push('');
+  lines.push('CONSUMPTION (this window)');
+  lines.push(
+    `  ≈ ${formatRange(env.windowFootprintKwh, 'kWh')} of AI compute — like ` +
+      `${formatRange(env.windowEquivalents.smartphoneCharges, 'phone charges')} · ` +
+      `${formatRange(env.windowEquivalents.evKm, 'km in an EV')}`
+  );
+  if (env.energyKwh === null) {
+    lines.push('  building your week-1 baseline — reduction appears after a few days');
+  } else if ((env.effectiveTokensSaved ?? 0) <= 0) {
+    lines.push('  no reduction vs. your baseline yet — trim the avoidable waste below to start');
+  } else {
+    const eq = equivalentsFor(env.energyKwh);
+    lines.push(
+      `  ↓ saved ${formatRange(env.energyKwh, 'kWh')} vs. your baseline ` +
+        `(≈ ${formatRange(eq.smartphoneCharges, 'phone charges')}) — keep it up`
+    );
+  }
 }
 
 function renderScorecard(lines: string[], sc: Scorecard): void {
@@ -356,7 +392,7 @@ function renderFindings(lines: string[], groups: FindingGroup[]): void {
   lines.push('');
   lines.push('TOP FINDINGS');
   if (groups.length === 0) {
-    lines.push('  none yet — run `tokenlean analyze` after a few sessions.');
+    lines.push('  none yet — run `llmguide analyze` after a few sessions.');
     return;
   }
   for (const group of groups) {
@@ -376,6 +412,51 @@ function renderFindings(lines: string[], groups: FindingGroup[]): void {
   }
 }
 
+/**
+ * The "consume less" ledger: each identified habit, what it costs, and the
+ * total avoidable footprint if you fixed them. Turns findings into a number
+ * you can act on. Costs are illustrative bounds (see constants.ts), so the
+ * section is explicit that it is an estimate.
+ */
+function renderWasteLedger(
+  lines: string[],
+  ledger: WasteLedger,
+  footprintKwh: Range
+): void {
+  lines.push('');
+  lines.push('AVOIDABLE WASTE (fix these to consume less)');
+  if (ledger.rows.length === 0) {
+    lines.push('  none identified — run `tokenlean analyze` after a few sessions.');
+    return;
+  }
+  for (const row of ledger.rows) {
+    lines.push(
+      `  ${row.category.padEnd(20)} ${String(row.count).padStart(3)}×  ` +
+        `≈ ${fmtTokenRange(row.effTokens)} tokens`
+    );
+  }
+  const share = shareOfFootprint(ledger.energyKwh, footprintKwh);
+  lines.push(
+    `  total avoidable ≈ ${fmtTokenRange(ledger.totalEffTokens)} tokens ` +
+      `≈ ${formatRange(ledger.energyKwh, 'kWh')} ` +
+      `(≈ ${formatRange(ledger.equivalents.smartphoneCharges, 'phone charges')})`
+  );
+  if (share) lines.push(`  that is ≈ ${share} of your footprint above`);
+  lines.push(
+    '  note: recurring cost — waste lingers in context and is re-sent each turn ' +
+      `(capped at ${WASTE_PERSIST_TURNS_CAP} turns)`
+  );
+  lines.push('  note: per-pattern token costs are rough illustrative bounds, not measurements');
+}
+
+/** "1.2–3.4%"-style share of the footprint, or null if the footprint is 0. */
+function shareOfFootprint(waste: Range, footprint: Range): string | null {
+  if (footprint.low <= 0 || footprint.high <= 0) return null;
+  const low = (waste.low / footprint.high) * 100;
+  const high = (waste.high / footprint.low) * 100;
+  return `${low.toFixed(1)}–${high.toFixed(1)}%`;
+}
+
 function renderClaudeMd(lines: string[], diffs: ClaudeMdDiff[]): void {
   lines.push('');
   lines.push('PROPOSED CLAUDE.md ADDITIONS');
@@ -389,7 +470,7 @@ function renderClaudeMd(lines: string[], diffs: ClaudeMdDiff[]): void {
     lines.push('');
   }
   lines.push(
-    '  note: `tokenlean report --write-claude-md` writes these to CLAUDE.md.suggested'
+    '  note: `llmguide report --write-claude-md` writes these to CLAUDE.md.suggested'
   );
   lines.push('  beside each project — CLAUDE.md itself is never modified.');
 }
@@ -425,7 +506,7 @@ function renderSelfSpend(lines: string[], spend: SelfSpendReport): void {
       ? 'overhead n/a (no analyzed usage yet)'
       : `${spend.overheadPct.toFixed(1)}% overhead`;
   lines.push(
-    `  tokenlean spent ${fmtTokens(selfTokens)} tokens ≈ $${spend.usd.toFixed(2)} ` +
+    `  LLMGuide spent ${fmtTokens(selfTokens)} tokens ≈ $${spend.usd.toFixed(2)} ` +
       `analyzing ${fmtTokens(spend.analyzedTokens)} tokens — ${overhead}`
   );
 }
@@ -437,6 +518,12 @@ function renderEnv(lines: string[], env: EnvEstimate): void {
     lines.push(`  ${(key + ':').padEnd(28)}${value}`);
 
   kv('window footprint', formatRange(env.windowFootprintKwh, 'kWh'));
+  kv(
+    '  ≈ same as',
+    `${formatRange(env.windowEquivalents.smartphoneCharges, 'phone charges')} · ` +
+      `${formatRange(env.windowEquivalents.ledBulbHours, 'h of an LED bulb')} · ` +
+      `${formatRange(env.windowEquivalents.evKm, 'km in an EV')}`
+  );
   if (env.energyKwh === null) {
     lines.push('  baseline not recorded yet — savings appear after week 1');
   } else if ((env.effectiveTokensSaved ?? 0) <= 0) {
@@ -446,6 +533,7 @@ function renderEnv(lines: string[], env: EnvEstimate): void {
     lines.push('  above the baseline) — keep at it.');
   } else {
     kv('energy saved vs baseline', formatRange(env.energyKwh, 'kWh'));
+    kv('  ≈ that is', formatRange(equivalentsFor(env.energyKwh).smartphoneCharges, 'phone charges'));
     if (env.waterOnsiteL) kv('water saved (on-site)', formatRange(env.waterOnsiteL, 'L'));
     if (env.waterLifecycleL)
       kv('water saved (lifecycle)', formatRange(env.waterLifecycleL, 'L'));
@@ -465,6 +553,11 @@ export function fmtTokens(n: number): string {
   if (abs >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
   if (abs >= 1_000) return `${(n / 1e3).toFixed(1)}k`;
   return String(Math.round(n));
+}
+
+/** "1.0k–4.0k"-style rendering for a token range. */
+function fmtTokenRange(r: Range): string {
+  return `${fmtTokens(r.low)}–${fmtTokens(r.high)}`;
 }
 
 function pct(rate: number): string {

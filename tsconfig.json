@@ -15,5 +15,5 @@
     "sourceMap": false
   },
   "include": ["src"],
-  "exclude": ["src/proxy", "src/analyzer/llm.ts"]
+  "exclude": ["src/proxy"]
 }

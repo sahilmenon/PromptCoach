@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -11,6 +11,7 @@ import {
   selectLlmSample,
   showPrivacyNoticeOnce,
   stripFences,
+  submitLlmBatch,
 } from '../src/analyzer/llm';
 import { ESTIMATE_LABEL } from '../src/constants';
 
@@ -21,13 +22,15 @@ let tmpDir: string;
 let db: DB;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenlean-report-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-report-'));
   db = openDb(path.join(tmpDir, 'db.sqlite'));
 });
 
 afterEach(() => {
   db.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 function seedSession(
@@ -358,7 +361,7 @@ describe('renderReport', () => {
     }
     expect(text).toContain('vs baseline 50.0%');
     expect(text).toMatch(
-      /tokenlean spent 41\.2k tokens ≈ \$0\.03 analyzing [\d.]+k tokens — [\d.]+% overhead/
+      /LLMGuide spent 41\.2k tokens ≈ \$0\.03 analyzing [\d.]+k tokens — [\d.]+% overhead/
     );
     expect(text).toContain('> "you always forget we use vitest"');
     expect(text).toContain('(0.90 · llm)');
@@ -366,7 +369,7 @@ describe('renderReport', () => {
     expect(text).toContain('+- Tests use vitest; never suggest jest');
     expect(text).toContain('never modified');
     expect(text).toContain(ESTIMATE_LABEL);
-    expect(text).not.toContain('tokenlean analyze --wait');
+    expect(text).not.toContain('llmguide analyze --wait');
     // plain text only — no ANSI escapes
     expect(text).not.toMatch(/\x1b\[/);
   });
@@ -395,6 +398,7 @@ describe('--json shape', () => {
         'scorecard',
         'selfSpend',
         'sinceDays',
+        'wasteLedger',
       ].sort()
     );
     expect(Object.keys(roundTripped.scorecard).sort()).toEqual(
@@ -586,5 +590,39 @@ describe('privacy notice', () => {
     expect(second).toBe(false);
     expect(logged).toHaveLength(1);
     expect(metaGet(db, 'privacy_notice_shown')).not.toBeNull();
+  });
+});
+
+describe('Haiku batch submission', () => {
+  it('submits condensed sessions to Anthropic and records the pending batch', async () => {
+    seedSession('haiku-session', NOW, { wasteScore: 9 });
+    seedTurn('haiku-session', 0, { role: 'user', textHead: 'Fix it and then make everything better.' });
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      id: 'msgbatch_test',
+      type: 'message_batch',
+      processing_status: 'in_progress',
+      request_counts: { processing: 1, succeeded: 0, errored: 0, canceled: 0, expired: 0 },
+      ended_at: null,
+      created_at: '2026-07-11T00:00:00Z',
+      expires_at: '2026-08-09T00:00:00Z',
+      archived_at: null,
+      cancel_initiated_at: null,
+      results_url: null,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    const result = await submitLlmBatch(db, { sample: 1 });
+
+    expect(result).toMatchObject({ submitted: 1, batchId: 'msgbatch_test' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/v1/messages/batches');
+    const request = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(request.requests[0]).toMatchObject({
+      custom_id: 'haiku-session',
+      params: { model: 'claude-haiku-4-5' },
+    });
+    expect(request.requests[0].params.messages[0].content).toContain('Fix it and then make everything better.');
+    expect(db.prepare('SELECT status, model FROM llm_batches WHERE id = ?').get('msgbatch_test'))
+      .toEqual({ status: 'in_progress', model: 'claude-haiku-4-5' });
   });
 });

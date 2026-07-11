@@ -8,27 +8,27 @@ function hookCommand(): string {
   return `node ${path.join(__dirname, 'hook.js')}`;
 }
 
-function isTokenleanCommand(command: unknown): boolean {
+function isLlmGuideCommand(command: unknown): boolean {
   if (typeof command !== 'string') return false;
   return command === hookCommand() ||
-    (command.includes('tokenlean') && command.includes('hook.js'));
+    ((command.includes('llmguide') || command.includes('tokenlean')) && command.includes('hook.js'));
 }
 
-function entryIsTokenlean(entry: unknown): boolean {
+function entryIsLlmGuide(entry: unknown): boolean {
   if (entry === null || typeof entry !== 'object') return false;
   const handlers = (entry as Record<string, unknown>).hooks;
   return Array.isArray(handlers) && handlers.some((handler) =>
     handler !== null && typeof handler === 'object' &&
-    isTokenleanCommand((handler as Record<string, unknown>).command)
+    isLlmGuideCommand((handler as Record<string, unknown>).command)
   );
 }
 
-export function hasCodexTokenleanHook(config: unknown): boolean {
+export function hasCodexLlmGuideHook(config: unknown): boolean {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) return false;
   const hooks = (config as Record<string, unknown>).hooks;
   if (hooks === null || typeof hooks !== 'object' || Array.isArray(hooks)) return false;
   const entries = (hooks as Record<string, unknown>).UserPromptSubmit;
-  return Array.isArray(entries) && entries.some(entryIsTokenlean);
+  return Array.isArray(entries) && entries.some(entryIsLlmGuide);
 }
 
 function readConfig(file: string): Record<string, unknown> {
@@ -48,8 +48,9 @@ function readConfig(file: string): Record<string, unknown> {
 }
 
 function backupOnce(file: string): void {
-  if (fs.existsSync(file) && !fs.existsSync(file + '.tokenlean-backup')) {
-    fs.copyFileSync(file, file + '.tokenlean-backup');
+  if (fs.existsSync(file) && !fs.existsSync(file + '.llmguide-backup') &&
+      !fs.existsSync(file + '.tokenlean-backup')) {
+    fs.copyFileSync(file, file + '.llmguide-backup');
   }
 }
 
@@ -64,7 +65,7 @@ export function installCodexHook(file: string = codexHooksPath()): {
   path: string;
 } {
   const config = readConfig(file);
-  if (hasCodexTokenleanHook(config)) return { installed: true, already: true, path: file };
+  if (hasCodexLlmGuideHook(config)) return { installed: true, already: true, path: file };
 
   const hooks = config.hooks === undefined ? {} : config.hooks;
   if (hooks === null || typeof hooks !== 'object' || Array.isArray(hooks)) {
@@ -82,7 +83,7 @@ export function installCodexHook(file: string = codexHooksPath()): {
       type: 'command',
       command: hookCommand(),
       timeout: HOOK_TIMEOUT_S,
-      statusMessage: 'Reviewing prompt with TokenLean',
+      statusMessage: 'Reviewing prompt with LLMGuide',
     }],
   });
   hookMap.UserPromptSubmit = entries;
@@ -109,7 +110,7 @@ export function uninstallCodexHook(file: string = codexHooksPath()): {
   const hookMap = hooks as Record<string, unknown>;
   const entries = hookMap.UserPromptSubmit;
   if (!Array.isArray(entries)) return { removed: false, path: file };
-  const kept = entries.filter((entry) => !entryIsTokenlean(entry));
+  const kept = entries.filter((entry) => !entryIsLlmGuide(entry));
   if (kept.length === entries.length) return { removed: false, path: file };
 
   backupOnce(file);

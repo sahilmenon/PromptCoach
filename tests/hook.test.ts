@@ -6,7 +6,7 @@ import { openDb, metaSet, type DB } from '../src/db';
 import { decideNudge } from '../src/hook/hook';
 import type { HookInput } from '../src/types';
 
-const PROJECT = '/tmp/tokenlean-test-project';
+const PROJECT = '/tmp/llmguide-test-project';
 
 interface NudgeRow {
   id: number;
@@ -22,7 +22,7 @@ let dir: string;
 let db: DB;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenlean-hook-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-hook-'));
   db = openDb(path.join(dir, 'db.sqlite'));
 });
 

@@ -1,0 +1,37 @@
+# Bloated context fixture for Strip demo
+# Intentionally repetitive / low-signal padding around a small real question.
+
+## Meeting notes (duplicate paste #1)
+The team met on Monday to discuss the quarterly roadmap. Alice mentioned timelines.
+Bob mentioned timelines. Carol mentioned timelines. We agreed timelines matter.
+Action items: follow up, follow up again, and also follow up.
+Random: lunch was sandwiches. The weather was cloudy. Someone's dog barked.
+
+## Meeting notes (duplicate paste #2)
+The team met on Monday to discuss the quarterly roadmap. Alice mentioned timelines.
+Bob mentioned timelines. Carol mentioned timelines. We agreed timelines matter.
+Action items: follow up, follow up again, and also follow up.
+Random: lunch was sandwiches. The weather was cloudy. Someone's dog barked.
+
+## Copied email signature spam
+Best regards,
+Best regards,
+Thanks,
+Thanks so much,
+Sent from my iPhone
+Sent from my iPhone
+Confidentiality notice: this email is confidential. This email is confidential.
+
+## Unrelated Wikipedia-ish filler
+A binary tree is a tree data structure. A binary tree is a tree data structure.
+In computer science, algorithms process data. In computer science, algorithms process data.
+Padding token padding token padding token padding token padding token.
+
+## Near-duplicate paragraph
+Please carefully note that the deployment window is Friday 4pm.
+Please carefully note that the deployment window is Friday 4pm.
+Kindly remember the deployment window is Friday 4pm.
+
+## Actual question (high signal)
+Given the deployment is Friday 4pm, list the three checklist items we must finish
+before freeze, as a JSON array of strings. Do not include lunch or weather notes.

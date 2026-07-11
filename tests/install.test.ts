@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { hasTokenleanHook, installHook, uninstallHook, muteHooks } from '../src/hook/install';
+import { hasLlmGuideHook, installHook, uninstallHook, muteHooks } from '../src/hook/install';
 import { openDb, metaGet } from '../src/db';
 
 let dir: string;
 let settingsPath: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenlean-install-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-install-'));
   settingsPath = path.join(dir, 'settings.json');
 });
 
@@ -51,9 +51,9 @@ describe('installHook', () => {
     expect(entry.hooks[0].command).toMatch(/^node .+hook\.js$/);
     expect(path.isAbsolute(entry.hooks[0].command.replace(/^node /, ''))).toBe(true);
     expect(entry.hooks[0].timeout).toBe(15);
-    expect(hasTokenleanHook(s)).toBe(true);
+    expect(hasLlmGuideHook(s)).toBe(true);
     // No pre-existing file means nothing to back up.
-    expect(fs.existsSync(settingsPath + '.tokenlean-backup')).toBe(false);
+    expect(fs.existsSync(settingsPath + '.llmguide-backup')).toBe(false);
   });
 
   it('preserves existing unrelated hooks and top-level keys exactly', () => {
@@ -77,7 +77,7 @@ describe('installHook', () => {
     expect(readSettings().hooks.UserPromptSubmit).toHaveLength(1);
   });
 
-  it('recognises an npm-installed tokenlean command as already installed', () => {
+  it('recognises an npm-installed llmguide command as already installed', () => {
     fs.writeFileSync(
       settingsPath,
       JSON.stringify({
@@ -88,7 +88,7 @@ describe('installHook', () => {
               hooks: [
                 {
                   type: 'command',
-                  command: 'node /home/u/node_modules/tokenlean/dist/hook/hook.js',
+                  command: 'node /home/u/node_modules/llmguide/dist/hook/hook.js',
                   timeout: 10,
                 },
               ],
@@ -102,18 +102,30 @@ describe('installHook', () => {
     expect(readSettings().hooks.UserPromptSubmit).toHaveLength(1);
   });
 
+  it('recognises a legacy TokenLean hook without installing a duplicate', () => {
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      hooks: {
+        UserPromptSubmit: [{
+          hooks: [{ type: 'command', command: 'node /home/u/node_modules/tokenlean/dist/hook/hook.js' }],
+        }],
+      },
+    }));
+    expect(installHook(settingsPath).already).toBe(true);
+    expect(readSettings().hooks.UserPromptSubmit).toHaveLength(1);
+  });
+
   it('throws on corrupt JSON and leaves the file byte-identical', () => {
     const corrupt = '{ "hooks": definitely not json';
     fs.writeFileSync(settingsPath, corrupt);
     expect(() => installHook(settingsPath)).toThrow(/not valid JSON/);
     expect(fs.readFileSync(settingsPath, 'utf8')).toBe(corrupt);
-    expect(fs.existsSync(settingsPath + '.tokenlean-backup')).toBe(false);
+    expect(fs.existsSync(settingsPath + '.llmguide-backup')).toBe(false);
   });
 
   it('creates the backup once, keeping the original content forever', () => {
     const original = JSON.stringify({ env: { KEEP: '1' } }, null, 2);
     fs.writeFileSync(settingsPath, original);
-    const backupPath = settingsPath + '.tokenlean-backup';
+    const backupPath = settingsPath + '.llmguide-backup';
 
     installHook(settingsPath);
     expect(fs.readFileSync(backupPath, 'utf8')).toBe(original);
@@ -126,10 +138,10 @@ describe('installHook', () => {
     expect(fs.readFileSync(backupPath, 'utf8')).toBe(original);
   });
 
-  it('honours the TOKENLEAN_CLAUDE_SETTINGS env override when no path is given', () => {
+  it('honours the LLMGUIDE_CLAUDE_SETTINGS env override when no path is given', () => {
     const envPath = path.join(dir, 'env-override', 'settings.json');
-    const prev = process.env.TOKENLEAN_CLAUDE_SETTINGS;
-    process.env.TOKENLEAN_CLAUDE_SETTINGS = envPath;
+    const prev = process.env.LLMGUIDE_CLAUDE_SETTINGS;
+    process.env.LLMGUIDE_CLAUDE_SETTINGS = envPath;
     try {
       const res = installHook();
       expect(res.path).toBe(envPath);
@@ -138,14 +150,14 @@ describe('installHook', () => {
       expect(un.removed).toBe(true);
       expect(un.path).toBe(envPath);
     } finally {
-      if (prev === undefined) delete process.env.TOKENLEAN_CLAUDE_SETTINGS;
-      else process.env.TOKENLEAN_CLAUDE_SETTINGS = prev;
+      if (prev === undefined) delete process.env.LLMGUIDE_CLAUDE_SETTINGS;
+      else process.env.LLMGUIDE_CLAUDE_SETTINGS = prev;
     }
   });
 });
 
 describe('uninstallHook', () => {
-  it('removes only the tokenlean entry; foreign hooks and keys survive', () => {
+  it('removes only the llmguide entry; foreign hooks and keys survive', () => {
     fs.writeFileSync(settingsPath, JSON.stringify(EXISTING_SETTINGS, null, 2));
     installHook(settingsPath);
 
@@ -179,7 +191,7 @@ describe('uninstallHook', () => {
     expect(fs.readFileSync(settingsPath, 'utf8')).toBe(corrupt);
   });
 
-  it('returns removed:false when no tokenlean entry is present', () => {
+  it('returns removed:false when no llmguide entry is present', () => {
     fs.writeFileSync(settingsPath, JSON.stringify(EXISTING_SETTINGS, null, 2));
     const before = fs.readFileSync(settingsPath, 'utf8');
     const res = uninstallHook(settingsPath);

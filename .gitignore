@@ -1,14 +1,39 @@
+# Node
 node_modules/
-dist/
+**/node_modules/
+*.tsbuildinfo
+
+# Python
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+*.egg-info/
+
+# Env
+.env
+.env.local
+
+# Databases
+apps/api/promptlens.db
+apps/api/*.db
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+
+# tokenlean
 .tokenlean/
 .env
 .env.local
 CLAUDE.md.suggested
-*.tsbuildinfo
-.DS_Store
+
+# Build output
+dist/
 .vinext/
 .wrangler/
+
+# OS
+.DS_Store
+.idea/
+*.DS_Store
