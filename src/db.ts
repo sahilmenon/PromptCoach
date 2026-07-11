@@ -9,13 +9,9 @@ export type DB = Database.Database;
 /**
  * Schema notes:
  *  - sessions/turns/tool_calls/findings/meta follow SPEC §4.2.
- *  - sessions.waste_score: heuristic waste ranking used to sample sessions
- *    for the LLM pass.
+ *  - sessions.waste_score: local heuristic waste ranking.
  *  - nudges: audit log for the live hook (every invocation, fired or
  *    suppressed, per SPEC §5.3).
- *  - usage_events: one row per API response observed by the read-only proxy.
- *  - llm_batches: Message Batches submitted by `analyze`, collected by
- *    `report` / `analyze --wait`.
  */
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sessions (

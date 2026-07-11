@@ -1,7 +1,7 @@
 {
   "name": "tokenlean",
   "version": "0.1.0",
-  "description": "Measure and reduce wasted Claude Code tokens — offline analyzer, live coaching hook, read-only usage proxy",
+  "description": "Local prompt-efficiency companion for Claude Code subscriptions",
   "license": "MIT",
   "bin": {
     "tokenlean": "bin/tokenlean.js"
@@ -30,10 +30,9 @@
     "tokens",
     "efficiency",
     "sustainability",
-    "anthropic"
+    "subscription"
   ],
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.111.0",
     "better-sqlite3": "^12.11.1",
     "commander": "^12.1.0"
   },

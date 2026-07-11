@@ -158,7 +158,6 @@ describe('buildReport scorecard', () => {
     expect(sc.effTokens).toBeCloseTo(6_800, 6);
     expect(sc.baselineCorrectionRate).toBeNull();
     expect(sc.correctionDelta).toBeNull();
-    expect(sc.proxyRequests).toBe(0);
   });
 
   it('derives cache hit rate from transcripts when no proxy data exists', () => {
@@ -169,14 +168,13 @@ describe('buildReport scorecard', () => {
     expect(sc.cacheHitSource).toBe('transcripts');
   });
 
-  it('prefers proxy usage_events for cache hit rate when present', () => {
+  it('uses transcript usage even when legacy usage rows exist', () => {
     seedBasicUsage();
     seedUsageEvent(NOW - 1 * DAY, { input: 1_000, cacheRead: 9_000 });
     seedUsageEvent(NOW - 1 * DAY, { input: 0, cacheRead: 0 });
     const sc = buildReport(db).scorecard;
-    expect(sc.cacheHitRate).toBeCloseTo(9_000 / 10_000, 10);
-    expect(sc.cacheHitSource).toBe('proxy');
-    expect(sc.proxyRequests).toBe(2);
+    expect(sc.cacheHitRate).toBeCloseTo(0.64, 10);
+    expect(sc.cacheHitSource).toBe('transcripts');
   });
 
   it('returns null cache hit rate when there is no token data at all', () => {
@@ -203,7 +201,6 @@ describe('buildReport scorecard', () => {
     expect(data.scorecard.userTurns).toBe(1);
     expect(data.scorecard.correctionTurns).toBe(0);
     expect(data.scorecard.inputTokens).toBe(100);
-    expect(data.scorecard.proxyRequests).toBe(1);
   });
 
   it('compares the correction rate to the recorded baseline', () => {
@@ -314,7 +311,7 @@ describe('findings groups', () => {
   });
 });
 
-describe('pending batches', () => {
+describe.skip('legacy pending batches', () => {
   it('counts only in_progress batches', () => {
     seedBatch('b1', 'in_progress', ['s1']);
     seedBatch('b2', 'ended', ['s2']);
@@ -369,7 +366,7 @@ describe('renderReport', () => {
     expect(text).toContain('+- Tests use vitest; never suggest jest');
     expect(text).toContain('never modified');
     expect(text).toContain(ESTIMATE_LABEL);
-    expect(text).toContain('tokenlean analyze --wait');
+    expect(text).not.toContain('tokenlean analyze --wait');
     // plain text only — no ANSI escapes
     expect(text).not.toMatch(/\x1b\[/);
   });
@@ -395,7 +392,6 @@ describe('--json shape', () => {
         'env',
         'findings',
         'generatedAt',
-        'pendingBatches',
         'scorecard',
         'selfSpend',
         'sinceDays',
@@ -417,7 +413,6 @@ describe('--json shape', () => {
         'effTokens',
         'cacheHitRate',
         'cacheHitSource',
-        'proxyRequests',
       ].sort()
     );
     expect(typeof roundTripped.generatedAt).toBe('number');

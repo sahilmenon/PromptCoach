@@ -8,21 +8,13 @@ import * as fs from 'fs';
  * never touch the user's real state.
  */
 
-export const PROXY_DEFAULT_PORT = 4141;
-export const DEFAULT_UPSTREAM = 'https://api.anthropic.com';
-export const DEFAULT_LLM_MODEL = 'claude-haiku-4-5';
-
-/** Root for tokenlean's own state (db, pidfile). Override: TOKENLEAN_HOME. */
+/** Root for tokenlean's own local state. Override: TOKENLEAN_HOME. */
 export function tokenleanHome(): string {
   return process.env.TOKENLEAN_HOME || path.join(os.homedir(), '.tokenlean');
 }
 
 export function dbPath(): string {
   return process.env.TOKENLEAN_DB || path.join(tokenleanHome(), 'db.sqlite');
-}
-
-export function proxyPidPath(): string {
-  return path.join(tokenleanHome(), 'proxy.pid');
 }
 
 /** The Claude Code config dir (contains projects/ and settings.json). */
@@ -47,10 +39,6 @@ export function claudeSettingsPath(): string {
     process.env.TOKENLEAN_CLAUDE_SETTINGS ||
     path.join(defaultClaudeDir(), 'settings.json')
   );
-}
-
-export function upstreamUrl(): string {
-  return process.env.TOKENLEAN_UPSTREAM || DEFAULT_UPSTREAM;
 }
 
 export function nowMs(): number {

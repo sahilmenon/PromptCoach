@@ -1,4 +1,17 @@
-import Anthropic from '@anthropic-ai/sdk';
+/**
+ * Legacy pure analysis helpers retained for migration tests.
+ * Network execution is disabled: tokenlean now runs on top of the user's
+ * Claude Code subscription through local transcripts and hooks.
+ */
+class Anthropic {
+  messages: any = {
+    batches: {
+      create: async () => { throw new Error('Developer API analysis is disabled.'); },
+      retrieve: async () => { throw new Error('Developer API analysis is disabled.'); },
+      results: async () => { throw new Error('Developer API analysis is disabled.'); },
+    },
+  };
+}
 import type { DB } from '../db';
 import { addSelfSpend, metaGet, metaSet } from '../db';
 import { DEFAULT_LLM_MODEL, nowMs } from '../config';

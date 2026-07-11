@@ -34,8 +34,7 @@ export interface Scorecard {
   effTokens: number;
   /** cacheRead / (cacheRead + cacheWrite + input); null without token data. */
   cacheHitRate: number | null;
-  cacheHitSource: 'proxy' | 'transcripts' | null;
-  proxyRequests: number;
+  cacheHitSource: 'transcripts' | null;
 }
 
 export interface FindingExample {
@@ -88,7 +87,6 @@ export interface ReportData {
   digest: HookDigest;
   selfSpend: SelfSpendReport;
   env: EnvEstimate;
-  pendingBatches: number;
 }
 
 export function buildReport(db: DB, opts?: { sinceDays?: number }): ReportData {
@@ -101,11 +99,6 @@ export function buildReport(db: DB, opts?: { sinceDays?: number }): ReportData {
   const digest = buildDigest(db); // reads meta 'last_report_ts' — before update
   const selfSpend = buildSelfSpend(db);
   const env = estimateEnvironment(db, opts);
-  const pendingBatches = (
-    db
-      .prepare(`SELECT COUNT(*) AS n FROM llm_batches WHERE status = 'in_progress'`)
-      .get() as { n: number }
-  ).n;
 
   metaSet(db, 'last_report_ts', String(generatedAt));
 
@@ -118,7 +111,6 @@ export function buildReport(db: DB, opts?: { sinceDays?: number }): ReportData {
     digest,
     selfSpend,
     env,
-    pendingBatches,
   };
 }
 
@@ -174,32 +166,11 @@ function buildScorecard(db: DB, cutoff: number | null): Scorecard {
   const correctionDelta =
     baselineCorrectionRate === null ? null : correctionRate - baselineCorrectionRate;
 
-  // Cache hit rate: prefer the proxy's per-request usage rows in-window;
-  // fall back to transcript token columns; null when neither has data.
-  const usageAgg = db
-    .prepare(
-      `SELECT COUNT(*) AS n,
-              SUM(COALESCE(input_tokens, 0)) AS i,
-              SUM(COALESCE(cache_read_tokens, 0)) AS r,
-              SUM(COALESCE(cache_write_tokens, 0)) AS w
-       FROM usage_events ${cutoff === null ? '' : 'WHERE ts >= ?'}`
-    )
-    .get(...sessionParams) as {
-    n: number;
-    i: number | null;
-    r: number | null;
-    w: number | null;
-  };
-  const proxyRequests = usageAgg.n;
-  const proxyDenom = (usageAgg.r ?? 0) + (usageAgg.w ?? 0) + (usageAgg.i ?? 0);
   const turnsDenom = cacheReadTokens + cacheWriteTokens + inputTokens;
 
   let cacheHitRate: number | null = null;
-  let cacheHitSource: 'proxy' | 'transcripts' | null = null;
-  if (proxyRequests > 0 && proxyDenom > 0) {
-    cacheHitRate = (usageAgg.r ?? 0) / proxyDenom;
-    cacheHitSource = 'proxy';
-  } else if (turnsDenom > 0) {
+  let cacheHitSource: 'transcripts' | null = null;
+  if (turnsDenom > 0) {
     cacheHitRate = cacheReadTokens / turnsDenom;
     cacheHitSource = 'transcripts';
   }
@@ -219,7 +190,6 @@ function buildScorecard(db: DB, cutoff: number | null): Scorecard {
     effTokens,
     cacheHitRate,
     cacheHitSource,
-    proxyRequests,
   };
 }
 
@@ -345,13 +315,6 @@ export function renderReport(data: ReportData): string {
   renderSelfSpend(lines, data.selfSpend);
   renderEnv(lines, data.env);
 
-  if (data.pendingBatches > 0) {
-    lines.push('');
-    lines.push(
-      `${data.pendingBatches} LLM batch(es) still processing — run \`tokenlean report\` ` +
-        'again later or `tokenlean analyze --wait`.'
-    );
-  }
   lines.push('');
   return lines.join('\n');
 }
@@ -387,7 +350,6 @@ function renderScorecard(lines: string[], sc: Scorecard): void {
       ? 'n/a (no token data yet)'
       : `${pct(sc.cacheHitRate)} (${sc.cacheHitSource})`
   );
-  kv('proxy requests', String(sc.proxyRequests));
 }
 
 function renderFindings(lines: string[], groups: FindingGroup[]): void {
