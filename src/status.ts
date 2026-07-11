@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { claudeSettingsPath, dbPath, defaultClaudeDir } from './config';
+import { claudeSettingsPath, codexHooksPath, dbPath, defaultClaudeDir, hookLlmConfig } from './config';
 import { metaGet, openDb } from './db';
+import { getHookBypass, hasTokenleanHook } from './hook/install';
+import { hasCodexTokenleanHook } from './hook/codexInstall';
 
 type Level = 'OK' | 'WARN' | 'FAIL' | '--';
 const line = (level: Level, text: string): string => level.padEnd(4) + ' ' + text;
@@ -23,10 +25,29 @@ export async function runStatus(): Promise<string> {
       ? line('WARN', 'Claude Code settings are not valid JSON: ' + settingsPath)
       : line('--', 'Claude Code settings not found yet: ' + settingsPath));
   }
-  const installed = !!settings?.hooks?.UserPromptSubmit &&
-    JSON.stringify(settings.hooks.UserPromptSubmit).includes('tokenlean');
-  out.push(installed ? line('OK', 'local UserPromptSubmit coaching hook installed')
+  const installed = hasTokenleanHook(settings);
+  out.push(installed ? line('OK', 'UserPromptSubmit coaching hook installed')
     : line('--', 'coaching hook not installed (run tokenlean hooks install)'));
+
+  out.push(line('--', '[codex cli]'));
+  const codexPath = codexHooksPath();
+  let codexConfig: unknown = null;
+  try {
+    codexConfig = JSON.parse(fs.readFileSync(codexPath, 'utf8'));
+    out.push(line('OK', 'Codex hooks readable: ' + codexPath));
+  } catch {
+    out.push(fs.existsSync(codexPath)
+      ? line('WARN', 'Codex hooks are not valid JSON: ' + codexPath)
+      : line('--', 'Codex hooks not found yet: ' + codexPath));
+  }
+  out.push(hasCodexTokenleanHook(codexConfig)
+    ? line('OK', 'Codex UserPromptSubmit coaching hook installed')
+    : line('--', 'Codex coaching hook not installed (run tokenlean hooks install codex)'));
+
+  const llm = hookLlmConfig();
+  out.push(llm
+    ? line('OK', `hosted prompt review configured: ${llm.model} via ${llm.provider}`)
+    : line('WARN', 'hosted prompt review needs ANTHROPIC_API_KEY or TOKENLEAN_LLM_API_KEY'));
 
   out.push(line('--', '[local analysis]'));
   const file = dbPath();
@@ -43,10 +64,13 @@ export async function runStatus(): Promise<string> {
       ' · findings ' + count('findings') + ' · nudges ' + count('nudges')));
     const mute = Number(metaGet(db, 'muted_until'));
     if (Number.isFinite(mute) && mute > Date.now()) out.push(line('WARN', 'nudges muted until ' + new Date(mute).toISOString()));
+    const bypass = getHookBypass(db);
+    out.push(bypass === 'off'
+      ? line('OK', 'review: trigger active; ordinary prompts go directly to the coding model')
+      : line('WARN', 'hook bypass ' + bypass + '; prompt review is being skipped'));
     db.close();
   } catch (error) {
     out.push(line('FAIL', 'database could not be read: ' + (error instanceof Error ? error.message : String(error))));
   }
-  out.push(line('OK', 'developer API disabled; no proxy or custom API base URL is used'));
   return out.join('\n');
 }

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { installHook, uninstallHook, muteHooks } from '../src/hook/install';
+import { hasTokenleanHook, installHook, uninstallHook, muteHooks } from '../src/hook/install';
 import { openDb, metaGet } from '../src/db';
 
 let dir: string;
@@ -50,7 +50,8 @@ describe('installHook', () => {
     expect(entry.hooks[0].type).toBe('command');
     expect(entry.hooks[0].command).toMatch(/^node .+hook\.js$/);
     expect(path.isAbsolute(entry.hooks[0].command.replace(/^node /, ''))).toBe(true);
-    expect(entry.hooks[0].timeout).toBe(10);
+    expect(entry.hooks[0].timeout).toBe(15);
+    expect(hasTokenleanHook(s)).toBe(true);
     // No pre-existing file means nothing to back up.
     expect(fs.existsSync(settingsPath + '.tokenlean-backup')).toBe(false);
   });
