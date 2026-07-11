@@ -5,7 +5,8 @@ import { ingestTranscripts } from './analyzer/parser';
 import { runHeuristics, recordBaselineIfReady } from './analyzer/heuristics';
 import { buildReport, renderReport } from './report/report';
 import { writeClaudeMdSuggestions } from './report/claudeMdDiff';
-import { installHook, uninstallHook, muteHooks } from './hook/install';
+import { getHookBypass, installHook, setHookBypass, uninstallHook, muteHooks } from './hook/install';
+import { installCodexHook, uninstallCodexHook } from './hook/codexInstall';
 import { runStatus } from './status';
 
 function parseSince(raw?: string): number | undefined {
@@ -17,7 +18,7 @@ function parseSince(raw?: string): number | undefined {
 
 const program = new Command();
 program.name('tokenlean')
-  .description('Local prompt-efficiency companion for your Claude Code subscription.')
+  .description('Prompt-efficiency companion for your Claude Code subscription.')
   .version('0.2.0');
 
 program.command('analyze')
@@ -56,12 +57,27 @@ program.command('report')
   });
 
 const hooks = program.command('hooks').description('Manage subscription-layer Claude Code coaching');
-hooks.command('install').action(() => {
-  const result = installHook();
-  console.log(result.already ? 'Hook already installed.' :
-    'Hook installed. It observes UserPromptSubmit locally, never calls a model, and never blocks.');
+function hookTargets(raw?: string): Array<'claude' | 'codex'> {
+  const target = (raw || 'all').toLowerCase();
+  if (target === 'all') return ['claude', 'codex'];
+  if (target === 'claude' || target === 'codex') return [target];
+  throw new Error('hook target must be claude, codex, or all');
+}
+
+hooks.command('install [target]').action((raw?: string) => {
+  const messages = hookTargets(raw).map((target) => {
+    const result = target === 'claude' ? installHook() : installCodexHook();
+    return `${target}: ${result.already ? 'already installed' : 'installed'}`;
+  });
+  console.log(messages.join('\n') + '\nPrefix a prompt with review: for in-terminal Haiku feedback.');
 });
-hooks.command('uninstall').action(() => console.log(uninstallHook().removed ? 'Hook removed.' : 'Hook was not installed.'));
+hooks.command('uninstall [target]').action((raw?: string) => {
+  const messages = hookTargets(raw).map((target) => {
+    const removed = target === 'claude' ? uninstallHook().removed : uninstallCodexHook().removed;
+    return `${target}: ${removed ? 'removed' : 'not installed'}`;
+  });
+  console.log(messages.join('\n'));
+});
 hooks.command('mute <days>').action((raw: string) => {
   const days = Number(raw);
   if (!Number.isFinite(days) || days <= 0) throw new Error('mute expects a positive number of days');
@@ -69,6 +85,26 @@ hooks.command('mute <days>').action((raw: string) => {
   try { console.log('Nudges muted until ' + new Date(muteHooks(db, days).mutedUntil).toLocaleString() + '.'); }
   finally { db.close(); }
 });
+hooks.command('bypass <mode>')
+  .description('Control direct-to-model mode: next, on, off, or status')
+  .action((raw: string) => {
+    const mode = raw.toLowerCase();
+    const db = openDb();
+    try {
+      if (mode === 'status') {
+        console.log('Hook bypass: ' + getHookBypass(db));
+      } else if (mode === 'next' || mode === 'on' || mode === 'off') {
+        setHookBypass(db, mode);
+        console.log(mode === 'next'
+          ? 'The next prompt will go directly to the coding model; review resumes afterward.'
+          : mode === 'on'
+            ? 'Hook bypass enabled; prompts go directly to the coding model.'
+            : 'Hook bypass disabled; Haiku review and blocking resumed.');
+      } else {
+        throw new Error('bypass expects next, on, off, or status');
+      }
+    } finally { db.close(); }
+  });
 
 program.command('status').description('Check local transcripts, hook, and analysis database')
   .action(async () => console.log(await runStatus()));

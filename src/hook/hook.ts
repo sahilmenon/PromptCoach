@@ -1,6 +1,7 @@
 import type { DB } from '../db';
-import { metaGet, openDb } from '../db';
+import { metaGet, metaSet, openDb } from '../db';
 import type { HookInput } from '../types';
+import { reviewPromptWithLlm, type PromptReview } from './llm';
 
 export interface NudgeDecision {
   /** Context line to print (Claude Code injects it), or null to stay silent. */
@@ -9,6 +10,19 @@ export interface NudgeDecision {
   pattern: string;
   suppressReason?: string;
 }
+
+/** Render the shared Claude Code/Codex UserPromptSubmit response. */
+export function renderHookOutput(decision: NudgeDecision): string | null {
+  if (decision.message === null) return null;
+  const hint = decision.pattern === 'llm_unavailable'
+    ? ''
+    : decision.pattern === 'good'
+      ? '\n\n→ Resubmit without review: to send to Codex.'
+      : '\n\n↳ Resubmit with review: for another review, or without it to send to Codex.';
+  return JSON.stringify({ decision: 'block', reason: decision.message + hint });
+}
+
+export type PromptReviewer = (prompt: string, cwd: string) => Promise<PromptReview | null>;
 
 /** SPEC §5.4: at most 5 fired nudges per local day. */
 const DAILY_FIRED_CAP = 5;
@@ -302,12 +316,27 @@ function evaluate(db: DB, sessionId: string, project: string, prompt: string): N
   return suppressed('no_match');
 }
 
+function logNudge(
+  db: DB,
+  sessionId: string,
+  project: string,
+  decision: NudgeDecision
+): void {
+  db.prepare(
+    'INSERT INTO nudges (session_id, project, ts, fired, pattern, message) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(
+    sessionId,
+    project,
+    Date.now(),
+    decision.message !== null ? 1 : 0,
+    decision.message !== null ? decision.pattern : decision.suppressReason ?? 'none',
+    decision.message
+  );
+}
+
 /**
- * Pure decision logic for the UserPromptSubmit hook (SPEC §5).
- * Heuristic-only — no LLM call, ever. Rate limits: 1 nudge per session,
- * 5 per day, respects meta 'muted_until'. Logs every invocation (fired or
- * suppressed) to the nudges table, except empty-prompt invocations.
- * Never throws: any internal/DB error returns a silent suppression.
+ * Legacy pure heuristic evaluator retained for report/migration compatibility.
+ * The live hook entrypoint below uses decideNudgeWithLlm instead.
  */
 export function decideNudge(db: DB, input: HookInput): NudgeDecision {
   try {
@@ -321,16 +350,7 @@ export function decideNudge(db: DB, input: HookInput): NudgeDecision {
 
     // Audit trail for the report's suggestions digest (SPEC §5.3). Suppressed
     // rows record the reason in `pattern` so the digest can break them down.
-    db.prepare(
-      'INSERT INTO nudges (session_id, project, ts, fired, pattern, message) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(
-      sessionId,
-      project,
-      Date.now(),
-      decision.message !== null ? 1 : 0,
-      decision.message !== null ? decision.pattern : decision.suppressReason ?? 'none',
-      decision.message
-    );
+    logNudge(db, sessionId, project, decision);
 
     return decision;
   } catch {
@@ -340,11 +360,76 @@ export function decideNudge(db: DB, input: HookInput): NudgeDecision {
 }
 
 /**
- * Hook entrypoint: reads HookInput JSON from stdin, prints at most one
- * context line to stdout, and ALWAYS exits 0 — on any internal error or a
- * locked/missing DB it passes through silently. Exit code 2 (blocking) is
- * forbidden by design. Budget: <500ms — synchronous SQLite only, no
- * network, no child processes.
+ * Live hook decision path. Local code only enforces mute/rate limits; the
+ * hosted model makes the prompt-quality decision. Any API failure fails open.
+ */
+export async function decideNudgeWithLlm(
+  db: DB,
+  input: HookInput,
+  reviewer: PromptReviewer = reviewPromptWithLlm
+): Promise<NudgeDecision> {
+  try {
+    const prompt = input && typeof input.prompt === 'string' ? input.prompt : '';
+    if (prompt.trim().length === 0) return suppressed('no_prompt');
+    const sessionId = typeof input.session_id === 'string' ? input.session_id : '';
+    const project = typeof input.cwd === 'string' ? input.cwd : '';
+
+    const trigger = /^review:\s*/i.exec(prompt);
+    if (trigger === null) {
+      const decision = suppressed('review_not_requested');
+      logNudge(db, sessionId, project, decision);
+      return decision;
+    }
+    const promptToReview = prompt.slice(trigger[0].length).trim();
+    if (!promptToReview) {
+      const decision = {
+        pattern: 'empty_review',
+        message: '🟡 ADD A PROMPT\n\nPut the prompt you want reviewed after  review:',
+      };
+      logNudge(db, sessionId, project, decision);
+      return decision;
+    }
+
+    const bypass = metaGet(db, 'hook_bypass');
+    if (bypass === 'on' || bypass === 'next') {
+      if (bypass === 'next') metaSet(db, 'hook_bypass', 'off');
+      const decision = suppressed(bypass === 'next' ? 'bypass_next' : 'bypass_on');
+      logNudge(db, sessionId, project, decision);
+      return decision;
+    }
+
+    const mutedRaw = metaGet(db, 'muted_until');
+    if (mutedRaw !== null && Number(mutedRaw) > Date.now()) {
+      const decision = suppressed('muted');
+      logNudge(db, sessionId, project, decision);
+      return decision;
+    }
+
+    const review = await reviewer(promptToReview, project);
+    let decision: NudgeDecision;
+    if (review === null) {
+      decision = {
+        pattern: 'llm_unavailable',
+        message:
+          '🔴 REVIEW UNAVAILABLE\n\nPrompt not sent. Check the Anthropic API key or network; remove  review:  to send without review.',
+      };
+    } else {
+      decision = {
+        pattern: review.category,
+        message: `${review.needsImprovement ? '🟡 SUGGESTION' : '🟢 READY'}\n\n${review.feedback}`,
+      };
+    }
+    logNudge(db, sessionId, project, decision);
+    return decision;
+  } catch {
+    return suppressed('internal_error');
+  }
+}
+
+/**
+ * Hook entrypoint: reads HookInput JSON from stdin, asks the configured hosted
+ * model only when the prompt begins with `review:`. Reviewed prompts are
+ * blocked with feedback; ordinary prompts proceed directly to the coding model.
  */
 export async function runHookMain(): Promise<void> {
   let db: DB | null = null;
@@ -354,10 +439,11 @@ export async function runHookMain(): Promise<void> {
     for await (const chunk of process.stdin) raw += chunk;
     const input = JSON.parse(raw) as HookInput;
     db = openDb();
-    const decision = decideNudge(db, input);
-    if (decision.message !== null) process.stdout.write(decision.message + '\n');
+    const decision = await decideNudgeWithLlm(db, input);
+    const output = renderHookOutput(decision);
+    if (output !== null) process.stdout.write(output + '\n');
   } catch {
-    // Print nothing, exit 0: the hook must never block or fail a prompt.
+    // A failure before a decision cannot safely emit malformed hook output.
   } finally {
     if (db !== null) {
       try {
@@ -370,6 +456,6 @@ export async function runHookMain(): Promise<void> {
 }
 
 if (require.main === module) {
-  // Never let a rejection produce a non-zero exit: the hook must not block.
+  // Structured JSON performs intentional blocking; process failures still exit 0.
   runHookMain().catch(() => process.exit(0));
 }

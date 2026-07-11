@@ -22,9 +22,10 @@ afterEach(() => {
 });
 
 describe('subscription-layer status', () => {
-  it('reports local transcripts and no developer API or proxy', async () => {
+  it('reports local transcripts, hosted-review configuration, and no proxy', async () => {
     const output = await runStatus();
     expect(output).toContain('local Claude Code transcripts found');
+    expect(output).toContain('hosted prompt review needs');
     expect(output).not.toContain('ANTHROPIC_BASE_URL');
     expect(output).not.toContain('[proxy]');
   });
@@ -39,6 +40,6 @@ describe('subscription-layer status', () => {
     const output = await runStatus();
     expect(output).toContain('coaching hook installed');
     expect(output).toContain('sessions 1');
-    expect(output).toContain('developer API disabled');
+    expect(output).toContain('hosted prompt review needs');
   });
 });

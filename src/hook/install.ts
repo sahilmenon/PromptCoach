@@ -1,12 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { DB } from '../db';
-import { metaSet } from '../db';
+import { metaGet, metaSet } from '../db';
 import { claudeSettingsPath } from '../config';
 
 const DAY_MS = 86_400_000;
-/** Claude Code hook timeout, in seconds — comfortably above the 500ms budget. */
-const HOOK_TIMEOUT_S = 10;
+/** Allow time for the hosted review; no interactive child process is used. */
+const HOOK_TIMEOUT_S = 15;
 
 /**
  * Command written into settings.json. __dirname resolves to dist/hook in the
@@ -39,6 +39,15 @@ function entryIsTokenlean(entry: unknown): boolean {
     }
   }
   return false;
+}
+
+/** Detect this package's hook using the same rules as install/uninstall. */
+export function hasTokenleanHook(settings: unknown): boolean {
+  if (settings === null || typeof settings !== 'object' || Array.isArray(settings)) return false;
+  const hooks = (settings as Record<string, unknown>).hooks;
+  if (hooks === null || typeof hooks !== 'object' || Array.isArray(hooks)) return false;
+  const entries = (hooks as Record<string, unknown>).UserPromptSubmit;
+  return Array.isArray(entries) && entries.some(entryIsTokenlean);
 }
 
 /**
@@ -181,4 +190,16 @@ export function muteHooks(db: DB, days: number): { mutedUntil: number } {
   const mutedUntil = Date.now() + days * DAY_MS;
   metaSet(db, 'muted_until', String(mutedUntil));
   return { mutedUntil };
+}
+
+export type HookBypassMode = 'off' | 'next' | 'on';
+
+export function setHookBypass(db: DB, mode: HookBypassMode): HookBypassMode {
+  metaSet(db, 'hook_bypass', mode);
+  return mode;
+}
+
+export function getHookBypass(db: DB): HookBypassMode {
+  const value = metaGet(db, 'hook_bypass');
+  return value === 'next' || value === 'on' ? value : 'off';
 }

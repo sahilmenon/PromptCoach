@@ -41,6 +41,55 @@ export function claudeSettingsPath(): string {
   );
 }
 
+/** Codex CLI state root and user-level hook file. */
+export function codexHome(): string {
+  return process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+}
+
+export function codexHooksPath(): string {
+  return process.env.TOKENLEAN_CODEX_HOOKS || path.join(codexHome(), 'hooks.json');
+}
+
 export function nowMs(): number {
   return Date.now();
+}
+
+export interface HookLlmConfig {
+  provider: 'anthropic' | 'openai';
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  timeoutMs: number;
+}
+
+/** Hosted prompt-review model used by the UserPromptSubmit hook. */
+export function hookLlmConfig(): HookLlmConfig | null {
+  const requested = process.env.TOKENLEAN_LLM_PROVIDER?.toLowerCase();
+  const provider = requested === 'openai' || requested === 'anthropic'
+    ? requested
+    : process.env.ANTHROPIC_API_KEY
+      ? 'anthropic'
+      : process.env.OPENAI_API_KEY
+        ? 'openai'
+        : 'anthropic';
+  const apiKey = (provider === 'anthropic'
+    ? process.env.ANTHROPIC_API_KEY
+    : process.env.OPENAI_API_KEY) || process.env.TOKENLEAN_LLM_API_KEY;
+  if (!apiKey) return null;
+
+  const rawTimeout = Number(process.env.TOKENLEAN_LLM_TIMEOUT_MS || 7_500);
+  const timeoutMs = Number.isFinite(rawTimeout)
+    ? Math.min(9_000, Math.max(500, rawTimeout))
+    : 7_500;
+
+  return {
+    provider,
+    apiKey,
+    baseUrl: (process.env.TOKENLEAN_LLM_BASE_URL ||
+      (provider === 'anthropic' ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1'))
+      .replace(/\/+$/, ''),
+    model: process.env.TOKENLEAN_LLM_MODEL ||
+      (provider === 'anthropic' ? 'claude-haiku-4-5' : 'gpt-5.4-nano'),
+    timeoutMs,
+  };
 }
