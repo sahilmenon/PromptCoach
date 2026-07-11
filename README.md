@@ -141,6 +141,7 @@ llmguide status                 Check whether everything is configured
 llmguide hooks mute 1           Pause coaching for one day
 llmguide hooks bypass next      Skip coaching for the next prompt
 llmguide config unset-key       Remove the saved Anthropic key
+npx tokenlean extension serve   Local bridge for the Chrome extension Analyze button
 ```
 
 Advanced report options:
@@ -165,8 +166,25 @@ To install it from this repository:
 4. Select the `extension` folder inside this project.
 5. Pin LLMGuide from Chrome's Extensions menu for easy access.
 
-The extension only reads a page after you click its controls. It never submits
-a prompt for you. Imported files are parsed locally.
+Keep a local bridge running so Analyze uses the same hosted prompt-review model
+as the CLI hook:
+
+```text
+# .env with GEMINI_API_KEY (or ANTHROPIC / OPENAI / CURSOR), or llmguide config set-key
+npx tokenlean extension serve
+```
+
+The extension can then:
+
+- review selected prompt text with that model after you click Analyze;
+- show a score and advice, plus a suggested rewrite only when needed;
+- run the Gemini deep prompt-efficiency audit / dashboard from Inspect;
+- import JSONL, JSON, or text transcripts locally.
+
+It never submits a prompt to the chat site. Imported raw transcript text is not
+uploaded; only a small aggregate summary is stored in extension storage. Model
+review sends the selected prompt to your configured provider through the local
+bridge on `127.0.0.1:8787`.
 
 ## Privacy and cost
 

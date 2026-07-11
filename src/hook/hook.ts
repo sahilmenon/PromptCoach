@@ -1,6 +1,7 @@
 import type { DB } from '../db';
 import { metaGet, metaSet, openDb } from '../db';
 import type { HookInput } from '../types';
+import { loadEnvFiles } from '../loadEnv';
 import { reviewPromptWithLlm, type PromptReview } from './llm';
 
 export interface NudgeDecision {
@@ -432,6 +433,7 @@ export async function decideNudgeWithLlm(
  * blocked with feedback; ordinary prompts proceed directly to the coding model.
  */
 export async function runHookMain(): Promise<void> {
+  loadEnvFiles();
   let db: DB | null = null;
   try {
     process.stdin.setEncoding('utf8');

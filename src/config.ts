@@ -61,9 +61,12 @@ export function nowMs(): number {
   return Date.now();
 }
 
+export type HookLlmProvider = 'anthropic' | 'openai' | 'cursor' | 'gemini';
+
 export interface HookLlmConfig {
-  provider: 'anthropic' | 'openai';
+  provider: HookLlmProvider;
   apiKey: string;
+  /** Empty for Cursor native (SDK / CLI / Cloud Agents). Otherwise an HTTP API root. */
   baseUrl: string;
   model: string;
   timeoutMs: number;
@@ -72,36 +75,92 @@ export interface HookLlmConfig {
 /** Default low-cost model for hosted transcript and prompt analysis. */
 export const DEFAULT_LLM_MODEL = 'claude-haiku-4-5';
 
+function resolveHookLlmProvider(): HookLlmProvider {
+  const requested = (
+    process.env.LLMGUIDE_LLM_PROVIDER || process.env.TOKENLEAN_LLM_PROVIDER
+  )?.toLowerCase();
+  if (
+    requested === 'openai'
+    || requested === 'anthropic'
+    || requested === 'cursor'
+    || requested === 'gemini'
+  ) {
+    return requested;
+  }
+  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) return 'gemini';
+  if (anthropicApiKey()) return 'anthropic';
+  if (process.env.OPENAI_API_KEY) return 'openai';
+  if (process.env.CURSOR_API_KEY) return 'cursor';
+  return 'anthropic';
+}
+
+function providerApiKey(provider: HookLlmProvider): string | undefined {
+  if (provider === 'anthropic') {
+    return anthropicApiKey()
+      || process.env.LLMGUIDE_LLM_API_KEY
+      || process.env.TOKENLEAN_LLM_API_KEY
+      || undefined;
+  }
+  if (provider === 'openai') {
+    return process.env.OPENAI_API_KEY
+      || process.env.LLMGUIDE_LLM_API_KEY
+      || process.env.TOKENLEAN_LLM_API_KEY;
+  }
+  if (provider === 'gemini') {
+    return process.env.GEMINI_API_KEY
+      || process.env.GOOGLE_API_KEY
+      || process.env.LLMGUIDE_LLM_API_KEY
+      || process.env.TOKENLEAN_LLM_API_KEY;
+  }
+  return process.env.CURSOR_API_KEY
+    || process.env.LLMGUIDE_LLM_API_KEY
+    || process.env.TOKENLEAN_LLM_API_KEY;
+}
+
+function defaultModel(provider: HookLlmProvider): string {
+  if (provider === 'anthropic') return DEFAULT_LLM_MODEL;
+  if (provider === 'openai') return 'gpt-5.4-nano';
+  if (provider === 'gemini') return 'gemini-2.5-flash';
+  return 'composer-2.5';
+}
+
+function defaultBaseUrl(provider: HookLlmProvider): string {
+  if (provider === 'anthropic') return 'https://api.anthropic.com/v1';
+  if (provider === 'openai') return 'https://api.openai.com/v1';
+  if (provider === 'gemini') return 'https://generativelanguage.googleapis.com/v1beta/openai';
+  // Cursor native paths do not use an OpenAI-style base URL unless the user
+  // points TOKENLEAN_LLM_BASE_URL / LLMGUIDE_LLM_BASE_URL at a proxy.
+  return '';
+}
+
 /** Hosted prompt-review model used by the UserPromptSubmit hook. */
 export function hookLlmConfig(): HookLlmConfig | null {
-  const requested = (process.env.LLMGUIDE_LLM_PROVIDER || process.env.TOKENLEAN_LLM_PROVIDER)?.toLowerCase();
-  const provider = requested === 'openai' || requested === 'anthropic'
-    ? requested
-    : anthropicApiKey()
-      ? 'anthropic'
-      : process.env.OPENAI_API_KEY
-        ? 'openai'
-        : 'anthropic';
-  const apiKey = (provider === 'anthropic'
-    ? anthropicApiKey()
-    : process.env.OPENAI_API_KEY) || process.env.LLMGUIDE_LLM_API_KEY ||
-      process.env.TOKENLEAN_LLM_API_KEY;
+  const provider = resolveHookLlmProvider();
+  const apiKey = providerApiKey(provider);
   if (!apiKey) return null;
 
-  const rawTimeout = Number(process.env.LLMGUIDE_LLM_TIMEOUT_MS ||
-    process.env.TOKENLEAN_LLM_TIMEOUT_MS || 7_500);
+  const cursorish = provider === 'cursor';
+  const defaultTimeout = cursorish ? 60_000 : 7_500;
+  const maxTimeout = cursorish ? 180_000 : 9_000;
+  const rawTimeout = Number(
+    process.env.LLMGUIDE_LLM_TIMEOUT_MS
+      || process.env.TOKENLEAN_LLM_TIMEOUT_MS
+      || defaultTimeout
+  );
   const timeoutMs = Number.isFinite(rawTimeout)
-    ? Math.min(9_000, Math.max(500, rawTimeout))
-    : 7_500;
+    ? Math.min(maxTimeout, Math.max(500, rawTimeout))
+    : defaultTimeout;
+
+  const rawBase = process.env.LLMGUIDE_LLM_BASE_URL ?? process.env.TOKENLEAN_LLM_BASE_URL;
+  const baseUrl = (rawBase !== undefined ? rawBase : defaultBaseUrl(provider)).replace(/\/+$/, '');
 
   return {
     provider,
     apiKey,
-    baseUrl: (process.env.LLMGUIDE_LLM_BASE_URL || process.env.TOKENLEAN_LLM_BASE_URL ||
-      (provider === 'anthropic' ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1'))
-      .replace(/\/+$/, ''),
-    model: process.env.LLMGUIDE_LLM_MODEL || process.env.TOKENLEAN_LLM_MODEL ||
-      (provider === 'anthropic' ? DEFAULT_LLM_MODEL : 'gpt-5.4-nano'),
+    baseUrl,
+    model: process.env.LLMGUIDE_LLM_MODEL
+      || process.env.TOKENLEAN_LLM_MODEL
+      || defaultModel(provider),
     timeoutMs,
   };
 }

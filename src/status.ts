@@ -49,7 +49,7 @@ export async function runStatus(): Promise<string> {
   out.push(llm
     ? line('OK', `hosted prompt review configured: ${llm.model} via ${llm.provider}` +
         (storedAnthropicApiKey() ? ' (saved key)' : ''))
-    : line('WARN', 'hosted prompt review needs `llmguide config set-key` or an API key environment variable'));
+    : line('WARN', 'hosted prompt review needs a key in .env, `llmguide config set-key`, or GEMINI/ANTHROPIC/OPENAI/CURSOR_API_KEY'));
 
   out.push(line('--', '[local analysis]'));
   const file = dbPath();

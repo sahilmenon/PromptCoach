@@ -24,6 +24,8 @@ apps/api/*.db
 
 # tokenlean
 .tokenlean/
+.env
+.env.local
 CLAUDE.md.suggested
 
 # Build output
@@ -34,3 +36,4 @@ dist/
 # OS
 .DS_Store
 .idea/
+*.DS_Store

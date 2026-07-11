@@ -1,7 +1,7 @@
 (() => {
-  const existing = document.getElementById("llmguide-floating-root");
+  const existing = document.getElementById("tokenlean-floating-root");
   if (existing) {
-    // Re-injection should not toggle visibility — only LLMGUIDE_TOGGLE does.
+    // Re-injection should not toggle visibility — only TOKENLEAN_TOGGLE / LLMGUIDE_TOGGLE does.
     return;
   }
 
@@ -14,13 +14,19 @@
   let lastSelectionRect = null;
   let pointerSelecting = false;
   let selectionSnapshot = null;
+  /** @type {"analyze"|"analyzing"|"suggest"|"done"} */
+  let toolbarMode = "analyze";
+  let toolbarPinned = false;
+  let toolbarSuggestion = "";
+  let toolbarInsertTarget = null;
+  let toolbarSourceText = "";
 
   const onClaude = /(?:^|\.)claude\.ai$/i.test(location.hostname);
   const onGpt = /(?:^|\.)(?:chatgpt\.com|chat\.openai\.com)$/i.test(location.hostname);
 
   const host = document.createElement("div");
-  host.id = "llmguide-floating-root";
-  host.setAttribute("data-llmguide", "floating-widget");
+  host.id = "tokenlean-floating-root";
+  host.setAttribute("data-tokenlean", "floating-widget");
   document.documentElement.appendChild(host);
   const root = host.attachShadow({ mode: "open" });
   const logoUrl = chrome.runtime.getURL("icons/llmguide-logo.png");
@@ -51,27 +57,103 @@
     if (node instanceof HTMLTextAreaElement || node instanceof HTMLInputElement) {
       return String(node.value || "").trim();
     }
-    return (node.innerText || "").trim();
+    return (node.innerText || node.textContent || "").trim();
+  };
+
+  const textMatchesInsert = (actual, expected) => {
+    const a = String(actual || "").replace(/\s+/g, " ").trim();
+    const e = String(expected || "").replace(/\s+/g, " ").trim();
+    if (!e) return true;
+    if (!a) return false;
+    if (a === e || a.includes(e) || e.includes(a)) return true;
+    const head = e.slice(0, Math.min(48, e.length));
+    return head.length >= 8 && a.includes(head);
+  };
+
+  const focusComposer = (target) => {
+    try { target.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch { /* ignore */ }
+    try {
+      target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+      target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+      target.click();
+    } catch { /* ignore */ }
+    try { target.focus({ preventScroll: true }); }
+    catch { try { target.focus(); } catch { /* ignore */ } }
+  };
+
+  const selectComposerContents = (target) => {
+    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
+      target.select();
+      return true;
+    }
+    try {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return true;
+    } catch {
+      try { return document.execCommand("selectAll", false, null); }
+      catch { return false; }
+    }
   };
 
   const writeEditable = (node, value) => {
-    if (!node) return;
-    node.focus();
-    if (node instanceof HTMLTextAreaElement || node instanceof HTMLInputElement) {
-      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), "value")?.set;
-      setter ? setter.call(node, value) : (node.value = value);
-      node.dispatchEvent(new Event("input", { bubbles: true }));
-      node.dispatchEvent(new Event("change", { bubbles: true }));
-      return;
+    if (!node || value == null) return false;
+    let target = editableRootFrom(node) || node;
+    if (!(target instanceof HTMLElement) || !document.contains(target)) return false;
+    if (target.id !== "prompt-textarea") {
+      const promptBox = target.closest?.("#prompt-textarea, [data-testid='prompt-textarea'], div.ProseMirror");
+      if (promptBox instanceof HTMLElement) target = promptBox;
     }
-    // ProseMirror (Claude) ignores innerText assignment — insertText updates its doc model.
-    try {
-      document.execCommand("selectAll", false, null);
-      document.execCommand("insertText", false, value);
-    } catch {
-      node.innerText = value;
-      node.dispatchEvent(new InputEvent("input", { bubbles: true, data: value }));
+    const text = String(value);
+    focusComposer(target);
+    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
+      const proto = Object.getPrototypeOf(target);
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set
+        || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set
+        || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter ? setter.call(target, text) : (target.value = text);
+      target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+      target.dispatchEvent(new Event("change", { bubbles: true }));
+      return textMatchesInsert(target.value, text);
     }
+    selectComposerContents(target);
+    let inserted = false;
+    try { inserted = document.execCommand("insertText", false, text); }
+    catch { inserted = false; }
+    if (!inserted || !textMatchesInsert(readEditable(target), text)) {
+      try {
+        document.execCommand("selectAll", false, null);
+        document.execCommand("delete", false, null);
+        inserted = document.execCommand("insertText", false, text);
+      } catch { inserted = false; }
+    }
+    if (!textMatchesInsert(readEditable(target), text)) {
+      try {
+        selectComposerContents(target);
+        const dt = new DataTransfer();
+        dt.setData("text/plain", text);
+        target.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: dt }));
+      } catch { /* ignore */ }
+    }
+    target.dispatchEvent(new InputEvent("input", {
+      bubbles: true, cancelable: true, inputType: "insertText", data: text,
+    }));
+    if (!textMatchesInsert(readEditable(target), text)) {
+      try {
+        while (target.firstChild) target.removeChild(target.firstChild);
+        text.split("\n").forEach((line, index) => {
+          if (index) target.appendChild(document.createElement("br"));
+          target.appendChild(document.createTextNode(line));
+        });
+        target.dispatchEvent(new InputEvent("input", {
+          bubbles: true, inputType: "insertFromPaste", data: text,
+        }));
+      } catch { /* ignore */ }
+    }
+    return textMatchesInsert(readEditable(target), text);
   };
 
   const looksLikePromptField = (node) => {
@@ -106,8 +188,22 @@
   };
 
   const findBestComposer = () => {
-    const selectors = [
+    const preferred = [
+      "div#prompt-textarea[contenteditable='true']",
+      "#prompt-textarea",
+      "[data-testid='prompt-textarea']",
       "div.ProseMirror[contenteditable='true']",
+    ];
+    for (const sel of preferred) {
+      let node;
+      try { node = document.querySelector(sel); }
+      catch { continue; }
+      if (node instanceof HTMLElement && !host.contains(node)) {
+        return editableRootFrom(node) || node;
+      }
+    }
+
+    const selectors = [
       "div.ProseMirror",
       "[contenteditable='true'][data-testid]",
       "[contenteditable][data-placeholder]",
@@ -116,8 +212,8 @@
       "[aria-label*='Reply' i][contenteditable]",
       "[aria-label*='Message' i][contenteditable]",
       "div[role='textbox'][contenteditable]",
-      "#prompt-textarea",
       "textarea[name='prompt']",
+      "textarea[placeholder*='Message' i]",
       "[contenteditable='true']",
       "[contenteditable='plaintext-only']",
     ];
@@ -132,13 +228,16 @@
         const rootEl = editableRootFrom(node) || node;
         if (!looksLikePromptField(rootEl)) continue;
         const rect = rootEl.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > innerHeight) continue;
         const area = rect.width * rect.height;
-        if (area > bestArea) {
+        // Prefer visible bottom composers over huge page contenteditables.
+        const score = area + (rect.top > innerHeight * 0.45 ? 50_000 : 0);
+        if (score > bestArea) {
           best = rootEl;
-          bestArea = area;
+          bestArea = score;
         }
       }
-      if (best && (sel.includes("ProseMirror") || onClaude)) break;
+      if (best && onClaude) break;
     }
     return best;
   };
@@ -155,30 +254,57 @@
     return fallbackEl?.getBoundingClientRect?.() || null;
   };
 
-  const analyzePromptText = (raw) => {
+  const localPromptStats = (raw) => {
     const text = raw.trim();
-    const words = text ? text.split(/\s+/).filter(Boolean) : [];
+    const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
     const chars = text.length;
-    const approxTokens = Math.max(1, Math.round(chars / 4));
-    const lines = text.split(/\n/).filter((line) => line.trim());
-    const hasGoal = /\b(goal|objective|i (want|need)|please)\b/i.test(text);
-    const hasConstraints = /\b(must|should|do not|don't|requirements?|constraints?)\b/i.test(text);
-    const hasDoneWhen = /\b(done when|acceptance|success criteria|verify)\b/i.test(text);
-    const hasCodeDump = chars > 1200 || (text.match(/[{};]/g) || []).length > 20;
-    const tips = [];
-    if (!hasGoal) tips.push("State the goal in one clear sentence.");
-    if (!hasConstraints) tips.push("Add requirements or constraints the model must follow.");
-    if (!hasDoneWhen) tips.push("Define what “done” looks like so the answer stays focused.");
-    if (hasCodeDump) tips.push("Large pasted code inflates tokens — point to files or paste only the relevant slice.");
-    if (words.length < 8) tips.push("Add a bit more context so the model does not guess.");
-    if (lines.length === 1 && words.length > 40) tips.push("Break a long single-line prompt into short labeled sections.");
-    if (!tips.length) tips.push("Structure looks solid. Keep reviewing before you submit.");
-    const score = Math.max(1, Math.min(10, 4 + (hasGoal ? 2 : 0) + (hasConstraints ? 2 : 0) + (hasDoneWhen ? 2 : 0) - (hasCodeDump ? 2 : 0)));
-    return { words: words.length, chars, approxTokens, lines: lines.length, score, tips };
+    return {
+      words,
+      chars,
+      approxTokens: Math.max(1, Math.round(chars / 4)),
+      lines: text ? text.split(/\n/).filter((line) => line.trim()).length : 0,
+    };
   };
 
-  const structurePrompt = (raw) =>
-    `Goal:\n${raw.trim()}\n\nRequirements:\n- Preserve existing behavior unless a change is requested.\n- Explain important code decisions in plain text.\n\nDone when:\n- The requested outcome is implemented and verified.`;
+  const escapeHtml = (value) =>
+    String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+  const requestModelReview = (prompt) =>
+    new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(
+          { type: "TOKENLEAN_REVIEW", prompt, cwd: location.href },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              resolve({ ok: false, error: "bridge_unreachable" });
+              return;
+            }
+            resolve(response || { ok: false, error: "unavailable" });
+          },
+        );
+      } catch {
+        resolve({ ok: false, error: "bridge_unreachable" });
+      }
+    });
+
+  const requestBridgeHealth = () =>
+    new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ type: "TOKENLEAN_REVIEW_HEALTH" }, (response) => {
+          if (chrome.runtime.lastError) {
+            resolve({ ok: false, error: "bridge_unreachable" });
+            return;
+          }
+          resolve(response || { ok: false, error: "unavailable" });
+        });
+      } catch {
+        resolve({ ok: false, error: "bridge_unreachable" });
+      }
+    });
 
   document.addEventListener(
     "focusin",
@@ -193,32 +319,30 @@
     <style>
       :host { all: initial; }
       * { box-sizing: border-box; }
-      .shell {
+      :root, .fab, .widget, .toolbar {
         --ink: #1a1f1c; --muted: #6b736e; --line: #e4e6e1;
         --paper: #ffffff; --wash: #f4f5f2; --accent: #1f6b4a;
         --accent-soft: #e8f3ec;
-        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       .fab {
         position: fixed; right: 18px; bottom: 18px; z-index: 2147483647;
         display: grid; place-items: center;
-        width: 38px; height: 38px; padding: 0; border: 1px solid var(--line);
-        border-radius: 10px; cursor: pointer; background: var(--paper);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        transition: border-color .15s ease, background .15s ease, transform .15s ease;
+        width: 28px; height: 28px; padding: 0; border: 1px solid var(--line);
+        border-radius: 8px; cursor: pointer; background: var(--paper);
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        transition: border-color .15s ease, background .15s ease;
       }
-      .fab:hover { border-color: #c9cec8; background: var(--wash); transform: scale(1.05); }
-      .fab:active { transform: scale(0.95); }
-      .fab img { width: 24px; height: 24px; border-radius: 4px; object-fit: contain; pointer-events: none; }
+      .fab:hover { border-color: #c9cec8; background: var(--wash); }
+      .fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .fab img { width: 18px; height: 18px; border-radius: 4px; object-fit: contain; pointer-events: none; }
       .fab.hidden { visibility: hidden; pointer-events: none; }
-      
       .widget {
-        position: fixed; right: 18px; bottom: 64px; z-index: 2147483647;
+        position: fixed; right: 18px; bottom: 54px; z-index: 2147483647;
         display: none; flex-direction: column; overflow: hidden;
-        width: min(340px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 84px));
+        width: min(340px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 72px));
         color: var(--ink); background: var(--paper);
         border: 1px solid var(--line); border-radius: 12px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       .widget.open { display: flex; }
       .top {
@@ -230,7 +354,23 @@
         overflow:hidden; border-radius:5px; }
       .mark img { display:block; width:100%; height:100%; object-fit:contain; }
       .name { font-size: 13px; font-weight: 700; }
-      .local { margin-left:auto; color:var(--muted); font-size:9px; letter-spacing:.08em; text-transform:uppercase; }
+      .runtime {
+        margin-left:auto; max-width:150px; padding:3px 7px; border-radius:999px;
+        color:var(--muted); background:var(--wash); border:1px solid var(--line);
+        font-size:9px; letter-spacing:.02em; line-height:1.2; text-align:right;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        transition: color .35s ease, background .35s ease, border-color .35s ease, opacity .35s ease;
+      }
+      .runtime.ready { color:#2d5a45; background:var(--accent-soft); border-color:#cfe3d7; }
+      .runtime.running {
+        color:#6a4b12; background:#fff6e5; border-color:#f0dfb8;
+        animation: runtime-pulse 1.2s ease-in-out infinite;
+      }
+      .runtime.error { color:#7a2e2e; background:#f8ecec; border-color:#e8cfcf; }
+      @keyframes runtime-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: .72; }
+      }
       .icon { width:26px; height:26px; border:0; border-radius:6px;
         color:var(--muted); background:transparent; cursor:pointer; font-size:16px; }
       .icon:hover { background: var(--wash); color: var(--ink); }
@@ -251,6 +391,43 @@
         border:0; border-radius:8px; color:white; background:var(--accent);
         text-align:center; cursor:pointer; font:600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       button.soft { color:var(--ink); background:var(--wash); border:1px solid var(--line); }
+      .analyze-btn {
+        position: relative; overflow: hidden;
+        display: block; line-height: 1.25;
+        min-height: 0; height: auto;
+      }
+      .analyze-btn .analyze-fill {
+        position: absolute; inset: 0 auto 0 0; width: 0%;
+        background: var(--accent); opacity: .18; pointer-events: none;
+        transition: none;
+      }
+      .analyze-btn .analyze-label {
+        position: relative; z-index: 1;
+        display: inline-block;
+      }
+      .analyze-btn .analyze-tick {
+        position: absolute; right: 10px; top: 50%; z-index: 1;
+        width: 14px; height: 14px; margin-top: -7px;
+        opacity: 0; transform: scale(.8);
+        transition: opacity .25s ease, transform .25s ease;
+        pointer-events: none;
+      }
+      .analyze-btn .analyze-tick svg { display:block; width:14px; height:14px; }
+      .analyze-btn.filling .analyze-fill {
+        animation: analyze-fill .7s cubic-bezier(.22,1,.36,1) forwards;
+      }
+      .analyze-btn.success {
+        color: #fff; background: var(--accent); border-color: var(--accent);
+        animation: none;
+      }
+      .analyze-btn.success .analyze-fill { width: 100%; opacity: 0; }
+      .analyze-btn.success .analyze-tick {
+        opacity: 1; transform: scale(1);
+      }
+      @keyframes analyze-fill {
+        from { width: 0%; }
+        to { width: 100%; }
+      }
       textarea { width:100%; min-height:110px; padding:10px; margin-top:7px;
         resize:vertical; border:1px solid var(--line); border-radius:8px;
         color:var(--ink); background:var(--paper); font:12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -261,11 +438,90 @@
       .file input { display:none; }
       .privacy { padding:8px 12px; border-top:1px solid var(--line);
         color:var(--muted); background:var(--paper); font-size:10px; text-align:center; }
-      .metrics { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
-      .metric { padding:4px 8px; border-radius:6px; background:var(--accent-soft);
-        color:#2d5a45; font:600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-      .tips { margin:8px 0 0; padding-left:16px; color:var(--muted); font-size:12px; }
-      .tips li { margin:4px 0; }
+      .result-graphs {
+        display:flex; justify-content:center; margin: 4px 0 10px;
+      }
+      .score-wrap { text-align:center; }
+      .score-wrap .label { margin-bottom:8px; text-align:center; }
+      .score-gauge {
+        position:relative; width:96px; height:96px; margin:0 auto;
+      }
+      .score-gauge svg { display:block; width:96px; height:96px; transform:rotate(-90deg); }
+      .score-gauge .track { fill:none; stroke:#e4e6e1; stroke-width:8; }
+      .score-gauge .fill {
+        fill:none; stroke:var(--accent); stroke-width:8; stroke-linecap:round;
+        stroke-dasharray: 251.2; stroke-dashoffset: 251.2;
+        transition: stroke-dashoffset .8s cubic-bezier(.22,1,.36,1);
+      }
+      .score-gauge.low .fill { stroke:#b45309; }
+      .score-gauge.mid .fill { stroke:#c9851a; }
+      .score-gauge.high .fill { stroke:var(--accent); }
+      .score-gauge .score-center {
+        position:absolute; inset:0; display:grid; place-items:center;
+        text-align:center; pointer-events:none;
+      }
+      .score-gauge .score-num {
+        display:block; color:var(--ink); font:700 22px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .score-gauge .score-of {
+        display:block; margin-top:2px; color:var(--muted); font-size:10px; letter-spacing:.04em;
+      }
+      .result-block { margin-top:10px; }
+      .result-block .label { margin-bottom:4px; }
+      .result-block p { margin:0; color:var(--ink); font-size:12px; line-height:1.45; }
+      .suggest {
+        margin-top:10px; padding:10px; border-radius:8px;
+        border:1px solid var(--line); background:var(--wash);
+      }
+      .suggest pre {
+        margin:6px 0 0; max-height:160px; padding:8px;
+        border-radius:6px; color:var(--ink); background:var(--paper);
+        font:11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .progress { list-style:none; margin:8px 0 0; padding:0; min-height: 28px; }
+      .progress-meta .label, .progress-meta p, #analysis > .label, #analysis > p {
+        transition: opacity .3s ease, transform .3s ease;
+      }
+      .progress li {
+        position:relative; padding:8px 0 8px 26px; color:var(--muted); font-size:12px;
+        opacity: 0; transform: translateY(8px);
+        transition:
+          opacity .35s ease,
+          transform .4s cubic-bezier(.22,1,.36,1),
+          color .35s ease;
+      }
+      .progress li.show {
+        opacity: 1; transform: translateY(0);
+      }
+      .progress li.leaving {
+        opacity: 0; transform: translateY(-6px);
+      }
+      .progress li::before {
+        content:""; position:absolute; left:4px; top:13px; width:10px; height:10px;
+        border-radius:50%; background:#d5d8d3; border:1px solid #c4c8c2;
+        transition: background .35s ease, border-color .35s ease, box-shadow .35s ease, transform .35s ease;
+      }
+      .progress li.done { color:#2d5a45; }
+      .progress li.done::before {
+        background:var(--accent); border-color:var(--accent);
+        transform: scale(1.05);
+      }
+      .progress li.on { color:var(--ink); font-weight:600; }
+      .progress li.on::before {
+        background:transparent; border-color:var(--accent);
+        box-shadow:0 0 0 3px var(--accent-soft);
+        animation: runtime-pulse 1.1s ease-in-out infinite;
+      }
+      .progress li.fail { color:#7a2e2e; }
+      .progress li.fail::before { background:#b42318; border-color:#b42318; }
+      #analysis {
+        transition: opacity .35s ease, transform .35s cubic-bezier(.22,1,.36,1);
+      }
+      #analysis.swap {
+        opacity: 0; transform: translateY(4px);
+      }
+      .tb-btn[disabled] { opacity:.55; cursor:wait; transition: opacity .25s ease; }
+      button.action, .tb-btn { transition: background .2s ease, color .2s ease, opacity .25s ease; }
 
       .toolbar {
         position: fixed; z-index: 2147483646; display: inline-flex;
@@ -296,71 +552,82 @@
       .tb-btn:first-of-type { border-left: 0; }
       .tb-btn:hover { background: var(--wash); }
       .tb-btn.primary { color: var(--accent); font-weight: 700; }
+      .tb-btn.suggest {
+        max-width: min(320px, 70vw);
+        overflow: hidden; text-overflow: ellipsis;
+        color: var(--accent); font-weight: 600; text-align: left;
+      }
+      .tb-btn.done { color: var(--accent); font-weight: 700; }
       .tb-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
       @media (max-width: 520px) {
         .fab { right:12px; bottom:12px; }
-        .widget { right:12px; bottom:64px; width:calc(100vw - 24px); max-height:calc(100vh - 84px); }
+        .widget { right:12px; bottom:48px; width:calc(100vw - 24px); max-height:calc(100vh - 64px); }
       }
     </style>
-    <div class="shell" aria-label="LLMGuide floating tools">
-      <button class="fab" id="fab" type="button" title="Open LLMGuide" aria-label="Open LLMGuide" aria-expanded="false">
-        <img src="${logoUrl}" alt="">
-      </button>
-      <section class="widget" id="widget" role="dialog" aria-label="LLMGuide tools">
-        <header class="top">
-          <span class="mark"><img src="${logoUrl}" alt=""></span><span class="name">LLMGuide</span>
-          <span class="local">LOCAL ONLY</span>
-          <button class="icon" id="close" type="button" title="Collapse to icon">×</button>
-        </header>
-        <nav class="tabs">
-          <button class="tab on" data-tab="prompt" type="button">Prompt</button>
-          <button class="tab" data-tab="inspect" type="button">Inspect</button>
-          <button class="tab" data-tab="import" type="button">Import</button>
-        </nav>
-        <div class="body">
-          <section class="panel on" id="prompt">
-            <article class="card">
-              <p class="label">IMPROVE A PROMPT</p>
-              <h2>Review every change</h2>
-              <p>Select text in a prompt field to see the analyze bubble. LLMGuide never submits it.</p>
-              <button class="action soft" id="read" type="button">Read focused prompt</button>
-              <textarea id="editor" placeholder="Focus a prompt field, or write a prompt here."></textarea>
-              <button class="action soft" id="analyze" type="button">Analyze prompt</button>
-              <button class="action soft" id="improve" type="button">Suggest clearer structure</button>
-              <button class="action" id="insert" type="button">Insert approved text</button>
-              <div id="analysis" hidden></div>
-              <div class="status" id="prompt-status"></div>
-            </article>
-          </section>
-          <section class="panel" id="inspect">
-            <article class="card">
-              <p class="label">ACTIVE PAGE</p>
-              <h2>Inspect visible context</h2>
-              <p>Scrape your recent activity on Gemini to generate a comprehensive prompt efficiency report.</p>
-              <button class="action" id="inspect-page" type="button">Run Deep Prompt Efficiency Audit</button>
-            </article>
-          </section>
-          <section class="panel" id="import">
-            <article class="card">
-              <p class="label">LOCAL TRANSCRIPTS</p>
-              <h2>Import JSONL, JSON, or text</h2>
-              <p>Files are parsed locally. Raw transcript text is not uploaded.</p>
-              <label class="file">Choose files<input id="files" type="file" accept=".jsonl,.json,.txt" multiple></label>
-              <pre id="summary" hidden></pre>
-            </article>
-          </section>
-        </div>
-        <footer class="privacy">Temporary page access · no prompt auto-submit · no developer API</footer>
-      </section>
 
-      <div class="toolbar" id="toolbar" role="toolbar" aria-label="LLMGuide selection tools" hidden>
-        <span class="tb-brand" aria-hidden="true"><img src="${logoUrl}" alt=""></span>
-        <button class="tb-btn primary" id="tb-analyze" type="button">Analyze</button>
-        <button class="tb-btn" id="tb-structure" type="button">Structure</button>
-        <button class="tb-btn" id="tb-insert" type="button">Insert</button>
-      </div>
+    <div class="toolbar" id="toolbar" role="toolbar" aria-label="LLMGuide selection tools" hidden>
+      <span class="tb-brand" aria-hidden="true"><img src="${logoUrl}" alt=""></span>
+      <button class="tb-btn primary" id="tb-analyze" type="button">Analyze</button>
     </div>
+
+    <button class="fab" id="fab" type="button" title="Open LLMGuide" aria-label="Open LLMGuide" aria-expanded="false">
+      <img src="${logoUrl}" alt="">
+    </button>
+    <section class="widget" id="widget" role="dialog" aria-label="LLMGuide tools">
+      <header class="top">
+        <span class="mark"><img src="${logoUrl}" alt=""></span>
+        <span class="name">LLMGuide</span>
+        <span class="runtime" id="runtime" title="Analysis runtime">Checking bridge…</span>
+        <button class="icon" id="close" type="button" title="Close">×</button>
+      </header>
+      <nav class="tabs">
+        <button class="tab on" data-tab="prompt" type="button">Prompt</button>
+        <button class="tab" data-tab="inspect" type="button">Inspect</button>
+        <button class="tab" data-tab="import" type="button">Import</button>
+      </nav>
+      <div class="body">
+        <section class="panel on" id="prompt">
+          <article class="card">
+            <p class="label">Prompt review</p>
+            <h2>Analyze before you submit</h2>
+            <p>Select prompt text to open Analyze. You get a score, advice, and a suggested rewrite when the prompt needs work.</p>
+            <button class="action soft" id="read" type="button">Read focused prompt</button>
+            <textarea id="editor" placeholder="Selected or focused prompt text appears here."></textarea>
+            <button class="action soft analyze-btn" id="analyze" type="button">
+              <span class="analyze-fill" aria-hidden="true"></span>
+              <span class="analyze-label">Analyze prompt</span>
+              <span class="analyze-tick" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3.5 8.5L6.5 11.5L12.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </button>
+            <div id="analysis" hidden></div>
+            <div class="status" id="prompt-status"></div>
+          </article>
+        </section>
+        <section class="panel" id="inspect">
+          <article class="card">
+            <p class="label">Active page</p>
+            <h2>Inspect visible context</h2>
+            <p>Scrape your recent activity on Gemini to generate a comprehensive prompt efficiency report.</p>
+            <button class="action" id="inspect-page" type="button">Run Deep Prompt Efficiency Audit</button>
+            <div class="status" id="inspect-status"></div>
+          </article>
+        </section>
+        <section class="panel" id="import">
+          <article class="card">
+            <p class="label">Local transcripts</p>
+            <h2>Import JSONL, JSON, or text</h2>
+            <p>Files are parsed locally. Raw transcript text is not uploaded.</p>
+            <label class="file">Choose files<input id="files" type="file" accept=".jsonl,.json,.txt" multiple></label>
+            <pre id="summary" hidden></pre>
+          </article>
+        </section>
+      </div>
+      <footer class="privacy" id="privacy">Temporary page access · no prompt auto-submit · bridge offline</footer>
+    </section>
   `;
 
   const fab = root.querySelector("#fab");
@@ -369,17 +636,351 @@
   const editor = root.querySelector("#editor");
   const promptStatus = root.querySelector("#prompt-status");
   const analysisBox = root.querySelector("#analysis");
-  const inspectStatus = root.querySelector("#inspect"); // panel itself as container or add a status div
-
-  const closeBtn = root.querySelector("#close");
-  const inspectPageBtn = root.querySelector("#inspect-page");
-  const readBtn = root.querySelector("#read");
+  const runtimeEl = root.querySelector("#runtime");
+  const privacyEl = root.querySelector("#privacy");
   const analyzeBtn = root.querySelector("#analyze");
-  const improveBtn = root.querySelector("#improve");
-  const insertBtn = root.querySelector("#insert");
-  const fileInput = root.querySelector("#files");
+  const analyzeLabel = analyzeBtn.querySelector(".analyze-label");
+  const tbAnalyzeBtn = root.querySelector("#tb-analyze");
 
-  const tabs = root.querySelectorAll(".tab");
+  let bridgeInfo = { provider: null, model: null, configured: false, online: false };
+  let analysisBusy = false;
+  let analysisToken = 0;
+
+  const providerLabel = (provider) => {
+    const key = String(provider || "").toLowerCase();
+    if (key === "cursor") return "Cursor";
+    if (key === "anthropic") return "Anthropic";
+    if (key === "openai") return "OpenAI";
+    if (key === "gemini") return "Gemini";
+    return provider ? String(provider) : "API";
+  };
+
+  const modelLabel = (model, provider) => model || (
+    provider === "cursor" ? "composer-2.5"
+      : provider === "openai" ? "gpt model"
+        : provider === "anthropic" ? "Claude"
+          : provider === "gemini" ? "gemini-2.5-flash" : "model"
+  );
+
+  const readyCopy = (provider, model) =>
+    `${modelLabel(model, provider)} · ${providerLabel(provider)}`;
+
+  const setRuntimeStatus = ({ state, provider, model, detail }) => {
+    const p = provider || bridgeInfo.provider;
+    const m = model || bridgeInfo.model;
+    runtimeEl.classList.remove("ready", "running", "error");
+    if (state === "running") {
+      runtimeEl.classList.add("running");
+      runtimeEl.textContent = detail || "Analyzing…";
+      runtimeEl.title = runtimeEl.textContent;
+      privacyEl.textContent = "Temporary page access · no prompt auto-submit · analyzing";
+      return;
+    }
+    if (state === "ready" && p) {
+      runtimeEl.classList.add("ready");
+      runtimeEl.textContent = detail || readyCopy(p, m);
+      runtimeEl.title = `Analysis model: ${modelLabel(m, p)} provided by ${providerLabel(p)}`;
+      privacyEl.textContent = `Temporary page access · no prompt auto-submit · ${modelLabel(m, p)} via ${providerLabel(p)}`;
+      return;
+    }
+    if (state === "error") {
+      runtimeEl.classList.add("error");
+      runtimeEl.textContent = detail || "Bridge offline";
+      runtimeEl.title = runtimeEl.textContent;
+      privacyEl.textContent = "Temporary page access · no prompt auto-submit · bridge offline";
+      return;
+    }
+    runtimeEl.textContent = detail || "Local";
+    runtimeEl.title = runtimeEl.textContent;
+    privacyEl.textContent = "Temporary page access · no prompt auto-submit · local only";
+  };
+
+  const truncateToolbarLabel = (text, max = 48) => {
+    const value = String(text || "").replace(/\s+/g, " ").trim();
+    if (value.length <= max) return value;
+    return `${value.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+  };
+
+  const resetToolbarChrome = () => {
+    toolbarMode = "analyze";
+    toolbarPinned = false;
+    toolbarSuggestion = "";
+    toolbarInsertTarget = null;
+    toolbarSourceText = "";
+    tbAnalyzeBtn.disabled = false;
+    tbAnalyzeBtn.classList.add("primary");
+    tbAnalyzeBtn.classList.remove("suggest", "done");
+    tbAnalyzeBtn.textContent = "Analyze";
+    tbAnalyzeBtn.title = "Analyze selected prompt";
+    tbAnalyzeBtn.setAttribute("aria-label", "Analyze");
+  };
+
+  const normalizeToolbarText = (text) => String(text || "").replace(/\s+/g, " ").trim();
+
+  const isDifferentToolbarText = (text) => {
+    const next = normalizeToolbarText(text);
+    const prev = normalizeToolbarText(toolbarSourceText);
+    if (!next) return false;
+    if (!prev) return true;
+    return next !== prev;
+  };
+
+  const keepToolbarVisible = (field, rect) => {
+    const target = (field && document.contains(field) ? field : null)
+      || (hintTarget && document.contains(hintTarget) ? hintTarget : null)
+      || lastEditable
+      || findBestComposer();
+    const placeRect = rect || lastSelectionRect || target?.getBoundingClientRect?.();
+    if (placeRect) {
+      lastSelectionRect = placeRect;
+      toolbar.hidden = false;
+      placeNear(toolbar, placeRect, true);
+      toolbar.classList.add("show");
+    }
+    if (target) {
+      hintTarget = target;
+      lastEditable = target;
+    }
+  };
+
+  const applyToolbarAnalyzeChrome = () => {
+    toolbarMode = "analyze";
+    toolbarPinned = false;
+    toolbarSuggestion = "";
+    tbAnalyzeBtn.disabled = false;
+    tbAnalyzeBtn.classList.add("primary");
+    tbAnalyzeBtn.classList.remove("suggest", "done");
+    tbAnalyzeBtn.textContent = "Analyze";
+    tbAnalyzeBtn.title = "Analyze selected prompt";
+    tbAnalyzeBtn.setAttribute("aria-label", "Analyze");
+  };
+
+  const showToolbarReviewResult = (review, field, sourceText = "") => {
+    const polished = review?.needsImprovement
+      ? String(review?.polishedPrompt || review?.polished_prompt || "").trim()
+      : "";
+    toolbarPinned = true;
+    toolbarSourceText = normalizeToolbarText(sourceText) || toolbarSourceText;
+    toolbarInsertTarget = (field && document.contains(field) ? field : null)
+      || lastEditable
+      || findBestComposer();
+    keepToolbarVisible(toolbarInsertTarget, lastSelectionRect);
+    tbAnalyzeBtn.disabled = false;
+    tbAnalyzeBtn.classList.add("primary");
+    if (polished) {
+      toolbarMode = "suggest";
+      toolbarSuggestion = polished;
+      tbAnalyzeBtn.classList.remove("done");
+      tbAnalyzeBtn.classList.add("suggest");
+      tbAnalyzeBtn.textContent = truncateToolbarLabel(polished);
+      tbAnalyzeBtn.title = `${polished}\n\nClick to insert. Select other text to analyze again.`;
+      tbAnalyzeBtn.setAttribute("aria-label", "Insert suggested prompt");
+    } else {
+      toolbarMode = "done";
+      toolbarSuggestion = "";
+      tbAnalyzeBtn.classList.remove("suggest");
+      tbAnalyzeBtn.classList.add("done");
+      tbAnalyzeBtn.textContent = "Done";
+      tbAnalyzeBtn.title = "Prompt looks good — select other text to analyze again";
+      tbAnalyzeBtn.setAttribute("aria-label", "Done");
+    }
+  };
+
+  const insertSuggestedPrompt = async () => {
+    const text = toolbarSuggestion.trim();
+    if (!text) return false;
+    const target = (toolbarInsertTarget && document.contains(toolbarInsertTarget)
+      ? toolbarInsertTarget
+      : null) || findBestComposer() || lastEditable;
+    if (!target) {
+      promptStatus.textContent = "No prompt field available to insert into.";
+      return false;
+    }
+    allowToolbarClick = true;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    focusComposer(target);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const ok = writeEditable(target, text);
+    if (ok) {
+      lastEditable = target;
+      editor.value = text;
+      promptStatus.textContent = "Suggested prompt inserted into the chat input.";
+      // Keep the suggestion visible until the user selects different text.
+      toolbarPinned = true;
+      toolbarMode = "suggest";
+      toolbarSuggestion = text;
+      toolbarSourceText = normalizeToolbarText(toolbarSourceText) || normalizeToolbarText(text);
+      tbAnalyzeBtn.classList.remove("done");
+      tbAnalyzeBtn.classList.add("suggest", "primary");
+      tbAnalyzeBtn.textContent = truncateToolbarLabel(text);
+      tbAnalyzeBtn.title = `${text}\n\nInserted. Select other text to analyze again.`;
+      keepToolbarVisible(target, lastSelectionRect);
+      setTimeout(() => { allowToolbarClick = false; }, 500);
+    } else {
+      promptStatus.textContent = "Could not insert into the chat input. Click the field and try again.";
+      allowToolbarClick = false;
+    }
+    return ok;
+  };
+
+  const resetAnalyzeButton = () => {
+    analyzeBtn.classList.remove("filling", "success");
+    analyzeBtn.disabled = false;
+    analyzeLabel.textContent = "Analyze prompt";
+    if (toolbarMode === "suggest" || toolbarMode === "done" || toolbarPinned) {
+      tbAnalyzeBtn.disabled = false;
+      return;
+    }
+    tbAnalyzeBtn.disabled = false;
+    tbAnalyzeBtn.classList.add("primary");
+    tbAnalyzeBtn.classList.remove("suggest", "done");
+    tbAnalyzeBtn.textContent = "Analyze";
+  };
+
+  const setAnalysisBusy = (busy) => {
+    analysisBusy = busy;
+    if (busy) {
+      analyzeBtn.classList.remove("filling", "success");
+      analyzeBtn.disabled = true;
+      analyzeLabel.textContent = "Analyzing…";
+      if (toolbarPinned || toolbarMode === "analyzing") {
+        tbAnalyzeBtn.disabled = true;
+        tbAnalyzeBtn.classList.remove("suggest", "done");
+        tbAnalyzeBtn.classList.add("primary");
+        tbAnalyzeBtn.textContent = "Analyzing…";
+        tbAnalyzeBtn.title = "Analyzing…";
+      } else {
+        tbAnalyzeBtn.disabled = true;
+        tbAnalyzeBtn.textContent = "Analyzing…";
+      }
+      return;
+    }
+    if (!analyzeBtn.classList.contains("success")) resetAnalyzeButton();
+  };
+
+  const playAnalyzeSuccess = async (token) => {
+    analyzeBtn.classList.add("filling");
+    analyzeLabel.textContent = "Finishing…";
+    const filled = await waitMs(720, token);
+    if (!filled) {
+      resetAnalyzeButton();
+      return false;
+    }
+    analyzeBtn.classList.remove("filling");
+    analyzeBtn.classList.add("success");
+    analyzeLabel.textContent = "Analysis complete";
+    const held = await waitMs(900, token);
+    if (!held) {
+      resetAnalyzeButton();
+      return false;
+    }
+    resetAnalyzeButton();
+    return true;
+  };
+
+  const ensureProgressShell = () => {
+    analysisBox.hidden = false;
+    let list = analysisBox.querySelector("ol.progress");
+    if (!list || analysisBox.querySelector(".progress-meta")) {
+      analysisBox.innerHTML = `<ol class="progress"></ol>`;
+      list = analysisBox.querySelector("ol.progress");
+    }
+    return list;
+  };
+
+  /** Show only the current stage (single step), with a crossfade out/in. */
+  const renderCurrentStage = async (step, _meta, token) => {
+    const list = ensureProgressShell();
+    promptStatus.textContent = "";
+    const previous = [...list.children];
+    for (const item of previous) {
+      item.classList.add("leaving");
+      item.classList.remove("show", "on", "done", "fail");
+    }
+    if (previous.length) {
+      const faded = await waitMs(280, token);
+      if (!faded) return false;
+      previous.forEach((item) => item.remove());
+    }
+
+    const item = document.createElement("li");
+    item.textContent = step.label;
+    if (step.state) item.classList.add(step.state);
+    list.appendChild(item);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        item.classList.add("show");
+      });
+    });
+    return true;
+  };
+
+  const waitMs = (ms, token) => new Promise((resolve) => {
+    if (token !== analysisToken) {
+      resolve(false);
+      return;
+    }
+    setTimeout(() => resolve(token === analysisToken), ms);
+  });
+
+  const swapAnalysisContent = async (renderFn, token) => {
+    analysisBox.classList.add("swap");
+    const ok = await waitMs(240, token);
+    if (!ok) {
+      analysisBox.classList.remove("swap");
+      return false;
+    }
+    renderFn();
+    void analysisBox.offsetWidth;
+    requestAnimationFrame(() => {
+      analysisBox.classList.remove("swap");
+    });
+    return true;
+  };
+
+  /** Advance through stages one by one — only the current stage is visible. */
+  const showPipeline = async (labels, meta, token, options = {}) => {
+    const pause = options.pauseMs ?? 560;
+    for (let i = 0; i < labels.length; i += 1) {
+      if (token !== analysisToken) return false;
+      const state = options.finalState && i === labels.length - 1
+        ? options.finalState
+        : "on";
+      if (!(await renderCurrentStage({ label: labels[i], state }, meta, token))) return false;
+      if (i < labels.length - 1 || options.pauseOnLast) {
+        const ok = await waitMs(pause, token);
+        if (!ok) return false;
+      }
+    }
+    return true;
+  };
+
+  const refreshBridgeInfo = async (options = {}) => {
+    if (analysisBusy && !options.force) return bridgeInfo;
+    const health = await requestBridgeHealth();
+    if (!health?.ok) {
+      bridgeInfo = { provider: null, model: null, configured: false, online: false };
+      if (!analysisBusy) setRuntimeStatus({ state: "error", detail: "Bridge offline" });
+      return bridgeInfo;
+    }
+    bridgeInfo = {
+      provider: health.provider || null,
+      model: health.model || null,
+      configured: health.configured === true,
+      online: true,
+    };
+    if (analysisBusy) return bridgeInfo;
+    if (!bridgeInfo.configured) {
+      setRuntimeStatus({ state: "error", detail: "No API key" });
+    } else {
+      setRuntimeStatus({
+        state: "ready",
+        provider: bridgeInfo.provider,
+        model: bridgeInfo.model,
+      });
+    }
+    return bridgeInfo;
+  };
 
   const attachDrag = (handle, target) => {
     let drag = null;
@@ -453,71 +1054,9 @@
     fab.classList.toggle("hidden", open);
     fab.setAttribute("aria-expanded", String(open));
     if (open) {
+      // Icon stays put; only the panel is shown/positioned relative to it.
       requestAnimationFrame(syncWidgetToFab);
-    }
-  };
-
-  fab.onclick = () => {
-    if (!fabWasDragged()) {
-      setOpen(true);
-    }
-  };
-
-  closeBtn.onclick = () => setOpen(false);
-
-  tabs.forEach(tab => {
-    tab.onclick = () => {
-      tabs.forEach(t => t.classList.remove("on"));
-      root.querySelectorAll(".panel").forEach(p => p.classList.remove("on"));
-      tab.classList.add("on");
-      root.querySelector(`#${tab.dataset.tab}`).classList.add("on");
-    };
-  });
-
-  inspectPageBtn.onclick = () => {
-    inspectStatus.textContent = "Harvesting prompts from Gemini...";
-    chrome.runtime.sendMessage({ action: "harvest_prompts" }, (response) => {
-      if (response && response.success) {
-        inspectStatus.textContent = "Success! Opening dashboard...";
-        chrome.runtime.sendMessage({ action: "open_dashboard" });
-      } else {
-        inspectStatus.textContent = response?.error || "Failed to harvest prompts.";
-      }
-    });
-  };
-
-  readBtn.onclick = () => {
-    const text = lastEditable ? readEditable(lastEditable) : "";
-    editor.value = text;
-    promptStatus.textContent = text ? "Prompt loaded from page." : "Field is empty.";
-  };
-
-  analyzeBtn.onclick = () => runAnalysis(editor.value);
-
-  improveBtn.onclick = () => {
-    const raw = editor.value.trim();
-    if (!raw) {
-      promptStatus.textContent = "Add or load a prompt first.";
-      return;
-    }
-    editor.value = structurePrompt(raw);
-    runAnalysis(editor.value);
-    promptStatus.textContent = "Suggestion ready.";
-  };
-
-  insertBtn.onclick = () => {
-    const value = editor.value;
-    if (!lastEditable) {
-      promptStatus.textContent = "No field to insert into.";
-      return;
-    }
-    writeEditable(lastEditable, value);
-    promptStatus.textContent = "Inserted into page.";
-  };
-
-  fileInput.onchange = (e) => {
-    if (e.target.files.length > 0) {
-      handleImport(Array.from(e.target.files));
+      void refreshBridgeInfo();
     }
   };
 
@@ -527,34 +1066,316 @@
     root.querySelector("#prompt").classList.add("on");
   };
 
-  const renderAnalysis = (result) => {
-    analysisBox.hidden = false;
-    analysisBox.innerHTML = `
-      <p class="label">Local analysis</p>
-      <div class="metrics">
-        <span class="metric">Score ${result.score}/10</span>
-        <span class="metric">~${result.approxTokens} tokens</span>
-        <span class="metric">${result.words} words</span>
-        <span class="metric">${result.lines} lines</span>
-      </div>
-      <ul class="tips">${result.tips.map((tip) => `<li>${tip}</li>`).join("")}</ul>
-    `;
+  const resolveReviewScore = (review) => {
+    if (!review || typeof review !== "object") return null;
+    const candidates = [
+      review.score,
+      review.rate,
+      review.prompt_score,
+      review.promptScore,
+      review.rating,
+    ];
+    for (const candidate of candidates) {
+      const n = typeof candidate === "number" ? candidate : Number(candidate);
+      if (Number.isFinite(n)) return Math.min(10, Math.max(0, Math.round(n)));
+    }
+    // Review succeeded but score was omitted (stale bridge / model drift).
+    if (review.needsImprovement === true || review.needs_improvement === true) return 4;
+    if (review.needsImprovement === false || review.needs_improvement === false) return 8;
+    if (review.category === "good" || review.feedback) return 8;
+    return null;
   };
 
-  const runAnalysis = (text) => {
+  const renderAnalysis = (result) => {
+    analysisBox.hidden = false;
+    const review = result.review;
+    const score = resolveReviewScore(review);
+    const polished = review?.needsImprovement
+      ? String(review?.polishedPrompt || review?.polished_prompt || "").trim()
+      : "";
+
+    const circumference = 2 * Math.PI * 40;
+    const scoreClamped = score == null ? 0 : Math.min(10, Math.max(0, score));
+    const scoreOffset = circumference * (1 - scoreClamped / 10);
+    const scoreTone = score == null ? "" : scoreClamped <= 4 ? "low" : scoreClamped <= 7 ? "mid" : "high";
+
+    const scoreHtml = score != null
+      ? `<div class="score-gauge ${scoreTone}" data-score="${scoreClamped}">
+          <svg viewBox="0 0 96 96" aria-hidden="true">
+            <circle class="track" cx="48" cy="48" r="40"></circle>
+            <circle class="fill" cx="48" cy="48" r="40"
+              stroke-dasharray="${circumference}"
+              stroke-dashoffset="${circumference}"
+              data-offset="${scoreOffset}"></circle>
+          </svg>
+          <div class="score-center">
+            <span><span class="score-num">${scoreClamped}</span><span class="score-of">/ 10</span></span>
+          </div>
+        </div>`
+      : `<div class="score-gauge">
+          <svg viewBox="0 0 96 96" aria-hidden="true">
+            <circle class="track" cx="48" cy="48" r="40"></circle>
+          </svg>
+          <div class="score-center"><span class="score-of">n/a</span></div>
+        </div>`;
+
+    const suggestHtml = polished
+      ? `<div class="suggest">
+          <p class="label">Suggested prompt</p>
+          <pre>${escapeHtml(polished)}</pre>
+        </div>`
+      : "";
+
+    analysisBox.innerHTML = `
+      ${result.sourceLabel ? `<p class="label">${escapeHtml(result.sourceLabel)}</p>` : ""}
+      <div class="result-graphs">
+        <div class="score-wrap">
+          <p class="label">Rate</p>
+          ${scoreHtml}
+        </div>
+      </div>
+      <div class="result-block">
+        <p class="label">Analysis</p>
+        <p>${escapeHtml(review?.feedback || result.message || "No feedback returned.")}</p>
+      </div>
+      ${suggestHtml}
+    `;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const ring = analysisBox.querySelector(".score-gauge .fill");
+        if (ring) {
+          const offset = Number(ring.getAttribute("data-offset"));
+          if (Number.isFinite(offset)) ring.style.strokeDashoffset = String(offset);
+        }
+      });
+    });
+  };
+
+  const runAnalysis = async (text, options = {}) => {
     const raw = text.trim();
     if (!raw) {
       analysisBox.hidden = true;
       promptStatus.textContent = "Add or load a prompt first.";
+      if (options.fromToolbar) {
+        toolbarMode = "analyze";
+        toolbarPinned = false;
+        resetToolbarChrome();
+      }
       return false;
     }
+    if (analysisBusy) {
+      promptStatus.textContent = "Analysis already running…";
+      return false;
+    }
+
+    const token = ++analysisToken;
     editor.value = raw;
-    renderAnalysis(analyzePromptText(raw));
-    promptStatus.textContent = "Local analysis ready. Nothing was submitted.";
+    if (options.fromToolbar) {
+      toolbarMode = "analyzing";
+      toolbarPinned = true;
+      toolbarInsertTarget = options.field || lastEditable || findBestComposer();
+      toolbarSourceText = normalizeToolbarText(options.sourceText || raw);
+      keepToolbarVisible(toolbarInsertTarget, options.rect || lastSelectionRect);
+    }
+    setAnalysisBusy(true);
+
+    const connectingMeta = null;
+    if (!(await renderCurrentStage(
+      { label: "Connecting to local bridge", state: "on" },
+      connectingMeta,
+      token,
+    ))) return false;
+
+    const info = await refreshBridgeInfo({ force: true });
+    if (token !== analysisToken) return false;
+
+    const provider = info.provider;
+    const model = info.model;
+    const meta = null;
+
+    setRuntimeStatus({
+      state: provider ? "running" : "error",
+      provider,
+      model,
+      detail: provider ? "Analyzing…" : (info.online ? "No API key" : "Bridge offline"),
+    });
+    if (!provider) {
+      promptStatus.textContent = info.online
+        ? "No API key configured for the bridge."
+        : "Start the local bridge first: npx tokenlean extension serve";
+    }
+
+    if (!info.online || !info.configured || !provider) {
+      const hint = !info.online
+        ? "Start the local bridge first: npx tokenlean extension serve"
+        : "No API key configured. Add GEMINI_API_KEY to .env, then run: npx tokenlean extension serve";
+      await showPipeline(
+        [
+          info.online ? "Connected to local bridge" : "Could not reach local bridge",
+          "Provider unavailable",
+        ],
+        meta,
+        token,
+        { pauseMs: 420, finalState: "fail", pauseOnLast: true },
+      );
+      if (token !== analysisToken) return false;
+      if (!(await swapAnalysisContent(() => {
+        renderAnalysis({
+          sourceLabel: "Model review unavailable",
+          subtitle: hint,
+          stats: localPromptStats(raw),
+          review: null,
+          message: hint,
+        });
+      }, token))) return false;
+      promptStatus.textContent = hint;
+      setAnalysisBusy(false);
+      resetAnalyzeButton();
+      await refreshBridgeInfo();
+      if (options.fromToolbar) {
+        toolbarMode = "done";
+        toolbarPinned = true;
+        toolbarSuggestion = "";
+        keepToolbarVisible(options.field || toolbarInsertTarget, options.rect || lastSelectionRect);
+        tbAnalyzeBtn.disabled = false;
+        tbAnalyzeBtn.classList.remove("suggest");
+        tbAnalyzeBtn.classList.add("done", "primary");
+        tbAnalyzeBtn.textContent = "Done";
+        tbAnalyzeBtn.title = hint;
+      }
+      return false;
+    }
+
+    if (!(await showPipeline(
+      [
+        "Connected to local bridge",
+        `Sending prompt to ${modelLabel(model, provider)}`,
+      ],
+      meta,
+      token,
+      { pauseMs: 480 },
+    ))) return false;
+
+    const stats = localPromptStats(raw);
+    const startedAt = Date.now();
+
+    if (!(await renderCurrentStage(
+      { label: `Waiting for review from ${providerLabel(provider)}`, state: "on" },
+      meta,
+      token,
+    ))) return false;
+
+    const response = await requestModelReview(raw);
+    if (token !== analysisToken) return false;
+
+    const elapsedMs = Date.now() - startedAt;
+    const usedProvider = response?.provider || provider;
+    const usedModel = response?.model || model;
+    const seconds = Math.max(1, Math.round(elapsedMs / 1000));
+
+    if (!response?.ok || !response.review) {
+      const hint = response?.error === "not_configured"
+        ? "No API key configured. Add GEMINI_API_KEY to .env, then run: npx tokenlean extension serve"
+        : response?.error === "bridge_unreachable"
+          ? "Start the local bridge first: npx tokenlean extension serve"
+          : "Model review unavailable. Check the local bridge and API key, then try again.";
+      if (!(await renderCurrentStage(
+        { label: `Review failed via ${providerLabel(usedProvider)}`, state: "fail" },
+        null,
+        token,
+      ))) return false;
+      const ok = await waitMs(560, token);
+      if (!ok) return false;
+      if (!(await swapAnalysisContent(() => {
+        renderAnalysis({
+          sourceLabel: `Failed on ${modelLabel(usedModel, usedProvider)} via ${providerLabel(usedProvider)}`,
+          subtitle: hint,
+          stats,
+          provider: usedProvider,
+          model: usedModel,
+          review: null,
+          message: hint,
+        });
+      }, token))) return false;
+      promptStatus.textContent = hint;
+      setAnalysisBusy(false);
+      resetAnalyzeButton();
+      setRuntimeStatus({
+        state: "error",
+        detail: usedProvider ? `${modelLabel(usedModel, usedProvider)} · failed` : "Review failed",
+      });
+      if (options.fromToolbar) {
+        toolbarMode = "done";
+        toolbarPinned = true;
+        toolbarSuggestion = "";
+        keepToolbarVisible(options.field || toolbarInsertTarget, options.rect || lastSelectionRect);
+        tbAnalyzeBtn.disabled = false;
+        tbAnalyzeBtn.classList.remove("suggest");
+        tbAnalyzeBtn.classList.add("done", "primary");
+        tbAnalyzeBtn.textContent = "Done";
+        tbAnalyzeBtn.title = hint;
+      }
+      return false;
+    }
+
+    if (!(await renderCurrentStage(
+      { label: `Review received from ${providerLabel(usedProvider)} (${seconds}s)`, state: "done" },
+      null,
+      token,
+    ))) return false;
+    if (!(await waitMs(420, token))) return false;
+
+    bridgeInfo = {
+      ...bridgeInfo,
+      provider: usedProvider,
+      model: usedModel,
+      configured: true,
+      online: true,
+    };
+
+    await playAnalyzeSuccess(token);
+    if (token !== analysisToken) return false;
+
+    if (!(await swapAnalysisContent(() => {
+      renderAnalysis({
+        stats,
+        provider: usedProvider,
+        model: usedModel,
+        review: response.review,
+      });
+    }, token))) return false;
+
+    analysisBusy = false;
+    setRuntimeStatus({
+      state: "ready",
+      provider: usedProvider,
+      model: usedModel,
+      detail: readyCopy(usedProvider, usedModel),
+    });
+
+    const score = resolveReviewScore(response.review);
+    const scoreBit = score != null ? ` Score ${score}/10.` : "";
+    const polished = response.review.needsImprovement
+      ? String(response.review.polishedPrompt || response.review.polished_prompt || "").trim()
+      : "";
+    promptStatus.textContent = response.review.needsImprovement
+      ? `Done on ${modelLabel(usedModel, usedProvider)} via ${providerLabel(usedProvider)}.${scoreBit}${polished ? " Suggested prompt below." : " See analysis below."}`
+      : `Done on ${modelLabel(usedModel, usedProvider)} via ${providerLabel(usedProvider)}.${scoreBit} Prompt looks good.`;
+    if (options.fromToolbar) {
+      showToolbarReviewResult(
+        response.review,
+        options.field || toolbarInsertTarget,
+        options.sourceText || raw,
+      );
+    }
     return true;
   };
 
-  const hideToolbar = () => {
+  const hideToolbar = (opts = {}) => {
+    if (!opts.force && (toolbarMode === "analyzing" || toolbarMode === "suggest" || toolbarMode === "done")) {
+      return;
+    }
     clearTimeout(hintHideTimer);
     clearTimeout(hintShowTimer);
     hintShowTimer = 0;
@@ -562,6 +1383,23 @@
     toolbar.classList.remove("show");
     toolbar.hidden = true;
     hintTarget = null;
+    resetToolbarChrome();
+  };
+
+  const switchToolbarToAnalyzeForSelection = (selected) => {
+    toolbarSourceText = "";
+    toolbarSuggestion = "";
+    toolbarInsertTarget = selected?.field || null;
+    toolbarPinned = false;
+    applyToolbarAnalyzeChrome();
+    if (selected?.text) {
+      hintTarget = selected.field;
+      lastEditable = selected.field;
+      lastSelectionRect = selected.rect || lastSelectionRect;
+      toolbar.hidden = false;
+      placeNear(toolbar, selected.rect || selected.field.getBoundingClientRect(), true);
+      toolbar.classList.add("show");
+    }
   };
 
   const fieldFromNode = (node) => {
@@ -669,6 +1507,21 @@
     if (host.hidden || allowToolbarClick) return;
     cancelPendingToolbar();
     const selected = captureSelectionSnapshot() || selectionSnapshot;
+
+    // Keep Done / suggested prompt until the user selects different text.
+    if (toolbarMode === "suggest" || toolbarMode === "done" || toolbarMode === "analyzing") {
+      if (!selected?.text) {
+        keepToolbarVisible(toolbarInsertTarget, lastSelectionRect);
+        return;
+      }
+      if (toolbarMode !== "analyzing" && isDifferentToolbarText(selected.text)) {
+        switchToolbarToAnalyzeForSelection(selected);
+        return;
+      }
+      keepToolbarVisible(selected.field, selected.rect);
+      return;
+    }
+
     if (!selected?.text) {
       selectionPending = false;
       if (toolbar.classList.contains("show")) hideToolbar();
@@ -689,6 +1542,14 @@
       const again = captureSelectionSnapshot() || selectionSnapshot;
       if (!again?.text) {
         hideToolbar();
+        return;
+      }
+      if (toolbarMode === "suggest" || toolbarMode === "done" || toolbarMode === "analyzing") {
+        if (toolbarMode !== "analyzing" && isDifferentToolbarText(again.text)) {
+          switchToolbarToAnalyzeForSelection(again);
+        } else {
+          keepToolbarVisible(again.field, again.rect);
+        }
         return;
       }
       revealToolbar(again);
@@ -755,52 +1616,51 @@
   root.querySelector("#tb-analyze").onclick = (event) => {
     event.preventDefault();
     event.stopPropagation();
-    runToolbarAction(({ field, text }) => {
-      if (field) lastEditable = field;
-      openPanel();
-      runAnalysis(text);
-    });
-  };
+    allowToolbarClick = true;
+    cancelPendingToolbar();
+    clearTimeout(hintHideTimer);
 
-  root.querySelector("#tb-structure").onclick = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    runToolbarAction(({ field, text }) => {
-      if (field) lastEditable = field;
-      if (!text.trim()) {
-        openPanel();
-        promptStatus.textContent = "Select prompt text first.";
-        return;
-      }
-      editor.value = structurePrompt(text);
-      renderAnalysis(analyzePromptText(editor.value));
-      openPanel();
-      promptStatus.textContent = "Structure ready. Edit it, then Insert.";
-    });
-  };
+    if (toolbarMode === "suggest") {
+      void insertSuggestedPrompt();
+      return;
+    }
+    if (toolbarMode === "done") {
+      // Keep Done visible until the user selects different text.
+      setTimeout(() => { allowToolbarClick = false; }, 400);
+      return;
+    }
+    if (toolbarMode === "analyzing" || analysisBusy) {
+      setTimeout(() => { allowToolbarClick = false; }, 400);
+      return;
+    }
 
-  root.querySelector("#tb-insert").onclick = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    runToolbarAction(({ field, text }) => {
-      const target = field && document.contains(field) ? field : lastEditable;
-      if (!target || !document.contains(target)) {
-        openPanel();
-        promptStatus.textContent = "No prompt field available to insert into.";
-        return;
-      }
-      const value = editor.value.trim() || text;
-      if (!value) {
-        openPanel();
-        promptStatus.textContent = "Nothing to insert yet. Analyze or Structure first.";
-        return;
-      }
-      writeEditable(target, value);
-      lastEditable = target;
+    const snapshot = selectedOrFocusedText();
+    if (snapshot.field) lastEditable = snapshot.field;
+    if (!snapshot.text.trim()) {
+      promptStatus.textContent = "Select prompt text first.";
       openPanel();
-      editor.value = value;
-      promptStatus.textContent = "Inserted into the page, but not submitted.";
+      hideToolbar({ force: true });
+      setTimeout(() => { allowToolbarClick = false; }, 400);
+      return;
+    }
+
+    toolbarMode = "analyzing";
+    toolbarPinned = true;
+    toolbarSuggestion = "";
+    toolbarInsertTarget = snapshot.field;
+    toolbarSourceText = normalizeToolbarText(snapshot.text);
+    keepToolbarVisible(snapshot.field, snapshot.rect);
+    tbAnalyzeBtn.disabled = true;
+    tbAnalyzeBtn.classList.remove("suggest", "done");
+    tbAnalyzeBtn.classList.add("primary");
+    tbAnalyzeBtn.textContent = "Analyzing…";
+    void runAnalysis(snapshot.text, {
+      fromToolbar: true,
+      field: snapshot.field,
+      rect: snapshot.rect,
+      sourceText: snapshot.text,
     });
+    setTimeout(() => { allowToolbarClick = false; }, 500);
   };
 
   document.addEventListener("selectionchange", () => {
@@ -812,7 +1672,7 @@
     "keydown",
     (event) => {
       if (event.key === "Escape") {
-        hideToolbar();
+        hideToolbar({ force: true });
         setOpen(false);
         return;
       }
@@ -846,6 +1706,10 @@
 
   document.addEventListener("scroll", () => {
     if (allowToolbarClick) return;
+    if (toolbarMode === "suggest" || toolbarMode === "done" || toolbarMode === "analyzing") {
+      keepToolbarVisible(toolbarInsertTarget || hintTarget, lastSelectionRect);
+      return;
+    }
     if (!toolbar.classList.contains("show") || !hintTarget) {
       if (selectionPending) onSelectionFinished();
       return;
@@ -856,14 +1720,58 @@
   }, true);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "LLMGUIDE_PING") {
+    if (message?.type === "TOKENLEAN_PING" || message?.type === "LLMGUIDE_PING") {
       sendResponse({ ok: true });
       return false;
     }
-    if (message?.type === "LLMGUIDE_TOGGLE") {
+    if (message?.type === "TOKENLEAN_TOGGLE" || message?.type === "LLMGUIDE_TOGGLE") {
       host.hidden = !host.hidden;
-      sendResponse({ ok: true, hidden: host.hidden });
+      sendResponse({ ok: true, hidden: host.hidden, success: true });
       return false;
+    }
+    if (message?.action === "read_prompt") {
+      const selected = findSelectedPromptField();
+      const text = selected ? selected.text : (lastEditable ? readEditable(lastEditable) : "");
+      sendResponse({ success: true, text });
+      return false;
+    }
+    if (message?.action === "insert_prompt") {
+      const value = String(message.value || "");
+      const target = (lastEditable && document.contains(lastEditable) ? lastEditable : null)
+        || findBestComposer();
+      if (!target) {
+        sendResponse({ success: false, error: "No editable field focused on page." });
+        return false;
+      }
+      const ok = writeEditable(target, value);
+      if (ok) lastEditable = target;
+      sendResponse({ success: ok });
+      return false;
+    }
+    if (message?.action === "harvest_prompts") {
+      const selectors = {
+        userPrompts: 'user-query, .query-text, .user-message, div[data-message-author="user"]',
+        userPromptsFallback: 'div.query-content, div.user-query, .query-content',
+      };
+      let promptElements = Array.from(document.querySelectorAll(selectors.userPrompts));
+      if (promptElements.length === 0) {
+        promptElements = Array.from(document.querySelectorAll(selectors.userPromptsFallback));
+      }
+      const prompts = promptElements
+        .map((el) => el.innerText.replace(/\s+/g, " ").trim())
+        .filter((text) => text.length > 0);
+      if (prompts.length === 0) {
+        sendResponse({ success: false, error: "No prompts found on the page yet." });
+        return false;
+      }
+      chrome.storage.local.set({ recentPrompts: prompts.slice(-10) }, () => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          sendResponse({ success: true });
+        }
+      });
+      return true;
     }
     return false;
   });
@@ -887,53 +1795,38 @@
   root.querySelector("#analyze").onclick = () => {
     runAnalysis(editor.value || readEditable(lastEditable));
   };
-  root.querySelector("#improve").onclick = () => {
-    const raw = editor.value.trim();
-    if (!raw) { promptStatus.textContent = "Add or load a prompt first."; return; }
-    editor.value = structurePrompt(raw);
-    renderAnalysis(analyzePromptText(editor.value));
-    promptStatus.textContent = "Suggestion ready. Edit it before inserting.";
-  };
-  root.querySelector("#insert").onclick = () => {
-    if (!lastEditable || !document.contains(lastEditable)) {
-      promptStatus.textContent = "The original editable field is no longer available.";
-      return;
-    }
-    writeEditable(lastEditable, editor.value);
-    promptStatus.textContent = "Inserted into the page, but not submitted.";
-  };
 
   root.querySelector("#inspect-page").onclick = () => {
+    const inspectStatus = root.querySelector("#inspect-status");
     if (!location.href.includes("gemini.google.com")) {
-      alert("Deep prompt auditing is currently optimized exclusively for Gemini. Please open a Gemini chat window to run this analysis.");
+      if (inspectStatus) {
+        inspectStatus.textContent = "Deep prompt auditing is currently optimized for Gemini. Open a Gemini chat to run this analysis.";
+      }
       return;
     }
-
+    if (inspectStatus) inspectStatus.textContent = "Harvesting prompts from Gemini…";
     const selectors = {
       userPrompts: 'user-query, .query-text, .user-message, div[data-message-author="user"]',
-      userPromptsFallback: 'div.query-content, div.user-query, .query-content'
+      userPromptsFallback: 'div.query-content, div.user-query, .query-content',
     };
-    
     let promptElements = Array.from(document.querySelectorAll(selectors.userPrompts));
     if (promptElements.length === 0) {
       promptElements = Array.from(document.querySelectorAll(selectors.userPromptsFallback));
     }
-    
     const prompts = promptElements
-      .map(el => el.innerText.replace(/\s+/g, ' ').trim())
-      .filter(text => text.length > 0);
-      
+      .map((el) => el.innerText.replace(/\s+/g, " ").trim())
+      .filter((text) => text.length > 0);
     if (prompts.length === 0) {
-      alert("No user prompts found on the page yet. Please write a prompt to Gemini first!");
+      if (inspectStatus) inspectStatus.textContent = "No user prompts found on the page yet.";
       return;
     }
-
     const recentPrompts = prompts.slice(-10);
-    chrome.storage.local.set({ recentPrompts: recentPrompts }, () => {
+    chrome.storage.local.set({ recentPrompts }, () => {
       if (chrome.runtime.lastError) {
-        console.error("Storage error:", chrome.runtime.lastError.message);
+        if (inspectStatus) inspectStatus.textContent = chrome.runtime.lastError.message;
         return;
       }
+      if (inspectStatus) inspectStatus.textContent = "Opening dashboard…";
       chrome.runtime.sendMessage({ action: "open_dashboard" });
     });
   };
@@ -951,7 +1844,7 @@
           const items = Array.isArray(value) ? value : [value];
           records += items.length;
           for (const item of items) if (item?.role || item?.message?.role) turns++;
-        } catch (e) {
+        } catch {
           if (!file.name.endsWith(".txt")) malformed++;
         }
       }
@@ -964,59 +1857,5 @@
     summary.textContent = `Files: ${files.length}\nParsed records: ${records}\nDetected turns: ${turns}\nMalformed records skipped: ${malformed}\nCharacters read locally: ${characters.toLocaleString()}`;
   };
 
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type === "LLMGUIDE_TOGGLE") {
-      host.hidden = !host.hidden;
-      sendResponse({ success: true, hidden: host.hidden });
-    } else if (message?.action === "read_prompt") {
-      const selected = findSelectedPromptField();
-      const text = selected ? selected.text : (lastEditable ? readEditable(lastEditable) : "");
-      sendResponse({ success: true, text: text });
-    } else if (message?.action === "insert_prompt") {
-      const value = message.value;
-      if (lastEditable && document.contains(lastEditable)) {
-        lastEditable.focus();
-        if (lastEditable.isContentEditable || lastEditable.getAttribute("contenteditable") != null) {
-          lastEditable.innerText = value;
-          lastEditable.dispatchEvent(new InputEvent("input", { bubbles: true, data: value }));
-        } else {
-          const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(lastEditable), "value")?.set;
-          setter ? setter.call(lastEditable, value) : (lastEditable.value = value);
-          lastEditable.dispatchEvent(new Event("input", { bubbles: true }));
-          lastEditable.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-        sendResponse({ success: true });
-      } else {
-        sendResponse({ success: false, error: "No editable field focused on page." });
-      }
-    } else if (message?.action === "harvest_prompts") {
-      const selectors = {
-        userPrompts: 'user-query, .query-text, .user-message, div[data-message-author="user"]',
-        userPromptsFallback: 'div.query-content, div.user-query, .query-content'
-      };
-      
-      let promptElements = Array.from(document.querySelectorAll(selectors.userPrompts));
-      if (promptElements.length === 0) {
-        promptElements = Array.from(document.querySelectorAll(selectors.userPromptsFallback));
-      }
-      
-      const prompts = promptElements
-        .map(el => el.innerText.replace(/\s+/g, ' ').trim())
-        .filter(text => text.length > 0);
-        
-      if (prompts.length === 0) {
-        sendResponse({ success: false, error: "No prompts found on the page yet." });
-      } else {
-        const recentPrompts = prompts.slice(-10);
-        chrome.storage.local.set({ recentPrompts: recentPrompts }, () => {
-          if (chrome.runtime.lastError) {
-            sendResponse({ success: false, error: chrome.runtime.lastError.message });
-          } else {
-            sendResponse({ success: true });
-          }
-        });
-      }
-      return true; // Keep channel open for async response
-    }
-  });
+  void refreshBridgeInfo();
 })();
