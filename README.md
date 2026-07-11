@@ -2,7 +2,7 @@
 
 LLMGuide helps you spot wasteful prompting habits in Claude Code and Codex.
 It can analyze past Claude Code sessions, produce a readable report, and give
-optional Haiku feedback before you submit a prompt.
+optional Haiku, GPT Nano, or Gemini Flash feedback before you submit a prompt.
 
 You do not need to be a developer to set it up. The basic setup takes a few
 minutes and only needs to be completed once.
@@ -13,7 +13,8 @@ You need:
 
 - Claude Code and/or Codex CLI;
 - [Node.js 20 or newer](https://nodejs.org/en/download); and
-- optionally, an Anthropic API key for Haiku-powered analysis and coaching.
+- optionally, an Anthropic, OpenAI, or Gemini API key for hosted coaching.
+  Transcript analysis with a hosted model specifically requires Anthropic.
 
 An API key is separate from a Claude Pro or Max subscription and may incur
 small usage charges. LLMGuide still provides local analysis without one.
@@ -47,16 +48,23 @@ project folder. To update later, run the installation command again.
 
 ## One-time setup
 
-### 1. Save your Anthropic key
+### 1. Save a model provider key
 
-If you want Haiku-powered analysis, run:
+Anthropic (Haiku) is the default:
 
 ```sh
 llmguide config set-key
 ```
 
-Paste your Anthropic API key at the prompt and press Enter. The characters are
-hidden while you type. The key is stored once at
+For GPT Nano or Gemini Flash coaching, choose the provider:
+
+```sh
+llmguide config set-key --provider openai
+llmguide config set-key --provider gemini
+```
+
+Paste your provider API key at the prompt and press Enter. The characters are
+hidden while you type. Each key is stored at
 `~/.llmguide/credentials.json`, with owner-only file permissions, and works
 from every project directory. You do not need to export it again.
 
@@ -124,12 +132,12 @@ prompt in Claude Code or Codex:
 review: update the login form and run the relevant tests
 ```
 
-LLMGuide sends that prompt to Haiku and displays feedback without sending it
-to the coding model. Revise it with `review:` for another check. When you are
-happy, remove `review:` and submit it normally.
+LLMGuide sends that prompt to your configured hosted model and displays
+feedback without sending it to the coding model. Revise it with `review:` for
+another check. When you are happy, remove `review:` and submit it normally.
 
 Prompts without `review:` pass directly to Claude Code or Codex and are not
-sent to Haiku by the coaching hook.
+sent to the hosted model by the coaching hook.
 
 ## Everyday commands
 
@@ -140,7 +148,7 @@ llmguide report                 Show your latest report
 llmguide status                 Check whether everything is configured
 llmguide hooks mute 1           Pause coaching for one day
 llmguide hooks bypass next      Skip coaching for the next prompt
-llmguide config unset-key       Remove the saved Anthropic key
+llmguide config unset-key       Remove all saved provider keys
 ```
 
 Advanced report options:
@@ -171,10 +179,10 @@ a prompt for you. Imported files are parsed locally.
 ## Privacy and cost
 
 Local parsing and heuristic analysis stay on your computer, and LLMGuide has
-no telemetry. Haiku features use your own Anthropic API key:
+no telemetry. Hosted features use your own provider API key:
 
-- `analyze` may send condensed transcript content, including prompt text,
-  code snippets, and file paths;
+- `analyze` may send condensed transcript content to Anthropic, including
+  prompt text, code snippets, and file paths;
 - coaching sends only prompts beginning with `review:` and the current working
   directory; and
 - ordinary prompts are not sent by the coaching hook.
@@ -190,8 +198,10 @@ owner-only file permissions. Remove it at any time with:
 llmguide config unset-key
 ```
 
-For CI, containers, or temporary overrides, `ANTHROPIC_API_KEY` and
-`LLMGUIDE_LLM_API_KEY` take precedence over the saved key.
+For CI, containers, or temporary overrides, `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), and
+`LLMGUIDE_LLM_API_KEY` are supported. Set `LLMGUIDE_LLM_PROVIDER` when using
+the generic key variable.
 
 ## Troubleshooting
 
@@ -249,12 +259,20 @@ export LLMGUIDE_LLM_BASE_URL="https://api.anthropic.com/v1"
 export LLMGUIDE_LLM_TIMEOUT_MS="7500"
 ```
 
-The live coaching hook can also use an OpenAI-compatible provider:
+The live coaching hook can also use OpenAI GPT Nano:
 
 ```sh
 export LLMGUIDE_LLM_PROVIDER="openai"
 export OPENAI_API_KEY="your-api-key"
 export LLMGUIDE_LLM_MODEL="gpt-5.4-nano"
+```
+
+Or Gemini Flash:
+
+```sh
+export LLMGUIDE_LLM_PROVIDER="gemini"
+export GEMINI_API_KEY="your-api-key"
+export LLMGUIDE_LLM_MODEL="gemini-3.1-flash-lite"
 ```
 
 Transcript analysis itself uses Anthropic's Message Batches API and defaults

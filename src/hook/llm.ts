@@ -75,6 +75,25 @@ function extractAnthropicText(body: unknown): string | null {
   return null;
 }
 
+function extractGeminiText(body: unknown): string | null {
+  if (body === null || typeof body !== 'object') return null;
+  const candidates = (body as Record<string, unknown>).candidates;
+  if (!Array.isArray(candidates)) return null;
+  for (const candidate of candidates) {
+    if (candidate === null || typeof candidate !== 'object') continue;
+    const content = (candidate as Record<string, unknown>).content;
+    if (content === null || typeof content !== 'object') continue;
+    const parts = (content as Record<string, unknown>).parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      if (part !== null && typeof part === 'object' && typeof (part as Record<string, unknown>).text === 'string') {
+        return (part as Record<string, unknown>).text as string;
+      }
+    }
+  }
+  return null;
+}
+
 export function parsePromptReview(raw: string): PromptReview | null {
   const start = raw.indexOf('{');
   const end = raw.lastIndexOf('}');
@@ -123,7 +142,11 @@ export async function reviewPromptWithLlm(
   try {
     const input = JSON.stringify({ cwd, prompt: prompt.slice(0, 20_000) });
     const anthropic = config.provider === 'anthropic';
-    const response = await fetch(config.baseUrl + (anthropic ? '/messages' : '/responses'), {
+    const gemini = config.provider === 'gemini';
+    const endpoint = anthropic ? '/messages' : gemini
+      ? `/models/${encodeURIComponent(config.model)}:generateContent`
+      : '/responses';
+    const response = await fetch(config.baseUrl + endpoint, {
       method: 'POST',
       headers: anthropic
         ? {
@@ -131,7 +154,12 @@ export async function reviewPromptWithLlm(
             'anthropic-version': '2023-06-01',
             'Content-Type': 'application/json',
           }
-        : {
+        : gemini
+          ? {
+              'x-goog-api-key': config.apiKey,
+              'Content-Type': 'application/json',
+            }
+          : {
             Authorization: `Bearer ${config.apiKey}`,
             'Content-Type': 'application/json',
           },
@@ -142,7 +170,16 @@ export async function reviewPromptWithLlm(
             messages: [{ role: 'user', content: input }],
             max_tokens: 300,
           }
-        : {
+        : gemini
+          ? {
+              systemInstruction: { parts: [{ text: PROMPT_REVIEW_SYSTEM }] },
+              contents: [{ role: 'user', parts: [{ text: input }] }],
+              generationConfig: {
+                maxOutputTokens: 300,
+                responseMimeType: 'application/json',
+              },
+            }
+          : {
             model: config.model,
             instructions: PROMPT_REVIEW_SYSTEM,
             input,
@@ -153,7 +190,9 @@ export async function reviewPromptWithLlm(
     });
     if (!response.ok) return null;
     const body: unknown = await response.json();
-    const text = anthropic ? extractAnthropicText(body) : extractOutputText(body);
+    const text = anthropic ? extractAnthropicText(body) : gemini
+      ? extractGeminiText(body)
+      : extractOutputText(body);
     return text === null ? null : parsePromptReview(text);
   } catch {
     return null;

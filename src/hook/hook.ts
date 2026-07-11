@@ -411,7 +411,7 @@ export async function decideNudgeWithLlm(
       decision = {
         pattern: 'llm_unavailable',
         message:
-          '🔴 REVIEW UNAVAILABLE\n\nPrompt not sent. Check the Anthropic API key or network; remove  review:  to send without review.',
+          '🔴 REVIEW UNAVAILABLE\n\nPrompt not sent. Check the configured API key or network; remove  review:  to send without review.',
       };
     } else {
       decision = {

@@ -10,7 +10,18 @@ import { writeClaudeMdSuggestions } from './report/claudeMdDiff';
 import { getHookBypass, installHook, setHookBypass, uninstallHook, muteHooks } from './hook/install';
 import { installCodexHook, uninstallCodexHook } from './hook/codexInstall';
 import { runStatus } from './status';
-import { anthropicApiKey, clearAnthropicApiKey, saveAnthropicApiKey } from './credentials';
+import {
+  anthropicApiKey,
+  clearApiKey,
+  saveApiKey,
+  type LlmProvider,
+} from './credentials';
+
+function parseProvider(raw: string): LlmProvider {
+  const provider = raw.toLowerCase();
+  if (provider === 'anthropic' || provider === 'openai' || provider === 'gemini') return provider;
+  throw new Error('provider must be anthropic, openai, or gemini');
+}
 
 function parseSince(raw?: string): number | undefined {
   if (!raw) return undefined;
@@ -27,7 +38,7 @@ function parseSample(raw: string): number {
   return sample;
 }
 
-async function readSecret(): Promise<string> {
+async function readSecret(provider: LlmProvider): Promise<string> {
   if (!process.stdin.isTTY) {
     const chunks: Buffer[] = [];
     for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
@@ -61,7 +72,7 @@ async function readSecret(): Promise<string> {
       }
     };
     readline.emitKeypressEvents(input);
-    process.stdout.write('Anthropic API key: ');
+    process.stdout.write(`${provider[0].toUpperCase() + provider.slice(1)} API key: `);
     input.setRawMode(true);
     input.resume();
     input.on('data', onData);
@@ -146,7 +157,7 @@ hooks.command('install [target]').action((raw?: string) => {
     const result = target === 'claude' ? installHook() : installCodexHook();
     return `${target}: ${result.already ? 'already installed' : 'installed'}`;
   });
-  console.log(messages.join('\n') + '\nPrefix a prompt with review: for in-terminal Haiku feedback.');
+  console.log(messages.join('\n') + '\nPrefix a prompt with review: for in-terminal hosted-model feedback.');
 });
 hooks.command('uninstall [target]').action((raw?: string) => {
   const messages = hookTargets(raw).map((target) => {
@@ -176,7 +187,7 @@ hooks.command('bypass <mode>')
           ? 'The next prompt will go directly to the coding model; review resumes afterward.'
           : mode === 'on'
             ? 'Hook bypass enabled; prompts go directly to the coding model.'
-            : 'Hook bypass disabled; Haiku review and blocking resumed.');
+            : 'Hook bypass disabled; hosted review and blocking resumed.');
       } else {
         throw new Error('bypass expects next, on, off, or status');
       }
@@ -188,16 +199,22 @@ program.command('status').description('Check local transcripts, hook, and analys
 
 const config = program.command('config').description('Manage persistent LLMGuide configuration');
 config.command('set-key [key]')
-  .description('Save an Anthropic API key for use in every directory')
-  .action(async (key?: string) => {
-    const file = saveAnthropicApiKey(key ?? await readSecret());
-    console.log(`Anthropic API key saved in ${file} (owner-readable only).`);
+  .description('Save an Anthropic, OpenAI, or Gemini API key for use in every directory')
+  .option('-p, --provider <provider>', 'anthropic, openai, or gemini', 'anthropic')
+  .action(async (key: string | undefined, opts: { provider: string }) => {
+    const provider = parseProvider(opts.provider);
+    const file = saveApiKey(provider, key ?? await readSecret(provider));
+    console.log(`${provider[0].toUpperCase() + provider.slice(1)} API key saved in ${file} (owner-readable only).`);
   });
 config.command('unset-key')
-  .description('Remove the saved Anthropic API key')
-  .action(() => console.log(clearAnthropicApiKey()
-    ? 'Saved Anthropic API key removed.'
-    : 'No saved Anthropic API key was found.'));
+  .description('Remove saved API keys, or one provider key with --provider')
+  .option('-p, --provider <provider>', 'anthropic, openai, or gemini')
+  .action((opts: { provider?: string }) => {
+    const provider = opts.provider ? parseProvider(opts.provider) : undefined;
+    console.log(clearApiKey(provider)
+      ? `Saved ${provider || 'API'} key${provider ? '' : 's'} removed.`
+      : `No saved ${provider || 'API'} key${provider ? '' : 's'} found.`);
+  });
 
 program.parseAsync(process.argv).catch(error => {
   console.error(error instanceof Error ? error.message : String(error));

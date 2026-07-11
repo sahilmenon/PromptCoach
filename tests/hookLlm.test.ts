@@ -170,4 +170,30 @@ describe('hosted prompt review', () => {
       max_tokens: 300,
     });
   });
+
+  it('calls Gemini generateContent and extracts candidate text', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: '{"needs_improvement":false,"category":"good","feedback":"The request is clear."}' }] } }],
+    }), { status: 200 }));
+    const review = await reviewPromptWithLlm('Explain this function.', '/repo', {
+      provider: 'gemini',
+      apiKey: 'gemini-test-key',
+      baseUrl: 'https://generativelanguage.googleapis.test/v1beta',
+      model: 'gemini-3.1-flash-lite',
+      timeoutMs: 1000,
+    });
+    expect(review).toEqual({
+      needsImprovement: false,
+      category: 'good',
+      feedback: 'The request is clear.',
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://generativelanguage.googleapis.test/v1beta/models/gemini-3.1-flash-lite:generateContent'
+    );
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('gemini-test-key');
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      generationConfig: { maxOutputTokens: 300, responseMimeType: 'application/json' },
+    });
+  });
 });

@@ -4,7 +4,7 @@ import { claudeSettingsPath, codexHooksPath, dbPath, defaultClaudeDir, hookLlmCo
 import { metaGet, openDb } from './db';
 import { getHookBypass, hasLlmGuideHook } from './hook/install';
 import { hasCodexLlmGuideHook } from './hook/codexInstall';
-import { storedAnthropicApiKey } from './credentials';
+import { storedApiKey } from './credentials';
 
 type Level = 'OK' | 'WARN' | 'FAIL' | '--';
 const line = (level: Level, text: string): string => level.padEnd(4) + ' ' + text;
@@ -48,7 +48,7 @@ export async function runStatus(): Promise<string> {
   const llm = hookLlmConfig();
   out.push(llm
     ? line('OK', `hosted prompt review configured: ${llm.model} via ${llm.provider}` +
-        (storedAnthropicApiKey() ? ' (saved key)' : ''))
+        (storedApiKey(llm.provider) ? ' (saved key)' : ''))
     : line('WARN', 'hosted prompt review needs `llmguide config set-key` or an API key environment variable'));
 
   out.push(line('--', '[local analysis]'));

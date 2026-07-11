@@ -1,7 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { anthropicApiKey } from './credentials';
+import { providerApiKey, storedLlmProvider, type LlmProvider } from './credentials';
 
 /**
  * All filesystem locations and environment lookups in one place.
@@ -62,7 +62,7 @@ export function nowMs(): number {
 }
 
 export interface HookLlmConfig {
-  provider: 'anthropic' | 'openai';
+  provider: LlmProvider;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -72,20 +72,30 @@ export interface HookLlmConfig {
 /** Default low-cost model for hosted transcript and prompt analysis. */
 export const DEFAULT_LLM_MODEL = 'claude-haiku-4-5';
 
+const DEFAULT_HOOK_MODELS: Record<LlmProvider, string> = {
+  anthropic: DEFAULT_LLM_MODEL,
+  openai: 'gpt-5.4-nano',
+  gemini: 'gemini-3.1-flash-lite',
+};
+
+const DEFAULT_HOOK_BASE_URLS: Record<LlmProvider, string> = {
+  anthropic: 'https://api.anthropic.com/v1',
+  openai: 'https://api.openai.com/v1',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta',
+};
+
 /** Hosted prompt-review model used by the UserPromptSubmit hook. */
 export function hookLlmConfig(): HookLlmConfig | null {
   const requested = (process.env.LLMGUIDE_LLM_PROVIDER || process.env.TOKENLEAN_LLM_PROVIDER)?.toLowerCase();
-  const provider = requested === 'openai' || requested === 'anthropic'
+  const supported = requested === 'openai' || requested === 'anthropic' || requested === 'gemini';
+  const savedProvider = storedLlmProvider();
+  const provider: LlmProvider = supported
     ? requested
-    : anthropicApiKey()
-      ? 'anthropic'
-      : process.env.OPENAI_API_KEY
-        ? 'openai'
-        : 'anthropic';
-  const apiKey = (provider === 'anthropic'
-    ? anthropicApiKey()
-    : process.env.OPENAI_API_KEY) || process.env.LLMGUIDE_LLM_API_KEY ||
-      process.env.TOKENLEAN_LLM_API_KEY;
+    : savedProvider && providerApiKey(savedProvider)
+      ? savedProvider
+      : (['anthropic', 'openai', 'gemini'] as const).find(candidate => providerApiKey(candidate)) || 'anthropic';
+  const apiKey = providerApiKey(provider) || process.env.LLMGUIDE_LLM_API_KEY ||
+    process.env.TOKENLEAN_LLM_API_KEY;
   if (!apiKey) return null;
 
   const rawTimeout = Number(process.env.LLMGUIDE_LLM_TIMEOUT_MS ||
@@ -98,10 +108,10 @@ export function hookLlmConfig(): HookLlmConfig | null {
     provider,
     apiKey,
     baseUrl: (process.env.LLMGUIDE_LLM_BASE_URL || process.env.TOKENLEAN_LLM_BASE_URL ||
-      (provider === 'anthropic' ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1'))
+      DEFAULT_HOOK_BASE_URLS[provider])
       .replace(/\/+$/, ''),
     model: process.env.LLMGUIDE_LLM_MODEL || process.env.TOKENLEAN_LLM_MODEL ||
-      (provider === 'anthropic' ? DEFAULT_LLM_MODEL : 'gpt-5.4-nano'),
+      DEFAULT_HOOK_MODELS[provider],
     timeoutMs,
   };
 }
