@@ -193,30 +193,32 @@
     <style>
       :host { all: initial; }
       * { box-sizing: border-box; }
-      :root, .fab, .widget, .toolbar {
+      .shell {
         --ink: #1a1f1c; --muted: #6b736e; --line: #e4e6e1;
         --paper: #ffffff; --wash: #f4f5f2; --accent: #1f6b4a;
         --accent-soft: #e8f3ec;
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       .fab {
         position: fixed; right: 18px; bottom: 18px; z-index: 2147483647;
         display: grid; place-items: center;
-        width: 28px; height: 28px; padding: 0; border: 1px solid var(--line);
-        border-radius: 8px; cursor: pointer; background: var(--paper);
-        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        transition: border-color .15s ease, background .15s ease;
+        width: 38px; height: 38px; padding: 0; border: 1px solid var(--line);
+        border-radius: 10px; cursor: pointer; background: var(--paper);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: border-color .15s ease, background .15s ease, transform .15s ease;
       }
-      .fab:hover { border-color: #c9cec8; background: var(--wash); }
-      .fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      .fab img { width: 18px; height: 18px; border-radius: 4px; object-fit: contain; pointer-events: none; }
+      .fab:hover { border-color: #c9cec8; background: var(--wash); transform: scale(1.05); }
+      .fab:active { transform: scale(0.95); }
+      .fab img { width: 24px; height: 24px; border-radius: 4px; object-fit: contain; pointer-events: none; }
       .fab.hidden { visibility: hidden; pointer-events: none; }
+      
       .widget {
-        position: fixed; right: 18px; bottom: 54px; z-index: 2147483647;
+        position: fixed; right: 18px; bottom: 64px; z-index: 2147483647;
         display: none; flex-direction: column; overflow: hidden;
-        width: min(340px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 72px));
+        width: min(340px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 84px));
         color: var(--ink); background: var(--paper);
         border: 1px solid var(--line); border-radius: 12px;
-        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
       }
       .widget.open { display: flex; }
       .top {
@@ -298,68 +300,67 @@
 
       @media (max-width: 520px) {
         .fab { right:12px; bottom:12px; }
-        .widget { right:12px; bottom:48px; width:calc(100vw - 24px); max-height:calc(100vh - 64px); }
+        .widget { right:12px; bottom:64px; width:calc(100vw - 24px); max-height:calc(100vh - 84px); }
       }
     </style>
+    <div class="shell" aria-label="tokenlean floating tools">
+      <button class="fab" id="fab" type="button" title="Open tokenlean" aria-label="Open tokenlean" aria-expanded="false">
+        <img src="${logoUrl}" alt="">
+      </button>
+      <section class="widget" id="widget" role="dialog" aria-label="tokenlean tools">
+        <header class="top">
+          <span class="mark"><img src="${logoUrl}" alt=""></span><span class="name">tokenlean</span>
+          <span class="local">LOCAL ONLY</span>
+          <button class="icon" id="close" type="button" title="Collapse to icon">×</button>
+        </header>
+        <nav class="tabs">
+          <button class="tab on" data-tab="prompt" type="button">Prompt</button>
+          <button class="tab" data-tab="inspect" type="button">Inspect</button>
+          <button class="tab" data-tab="import" type="button">Import</button>
+        </nav>
+        <div class="body">
+          <section class="panel on" id="prompt">
+            <article class="card">
+              <p class="label">IMPROVE A PROMPT</p>
+              <h2>Review every change</h2>
+              <p>Select text in a prompt field to see the analyze bubble. tokenlean never submits it.</p>
+              <button class="action soft" id="read" type="button">Read focused prompt</button>
+              <textarea id="editor" placeholder="Focus a prompt field, or write a prompt here."></textarea>
+              <button class="action soft" id="analyze" type="button">Analyze prompt</button>
+              <button class="action soft" id="improve" type="button">Suggest clearer structure</button>
+              <button class="action" id="insert" type="button">Insert approved text</button>
+              <div id="analysis" hidden></div>
+              <div class="status" id="prompt-status"></div>
+            </article>
+          </section>
+          <section class="panel" id="inspect">
+            <article class="card">
+              <p class="label">ACTIVE PAGE</p>
+              <h2>Inspect visible context</h2>
+              <p>Scrape your recent activity on Gemini to generate a comprehensive prompt efficiency report.</p>
+              <button class="action" id="inspect-page" type="button">Run Deep Prompt Efficiency Audit</button>
+            </article>
+          </section>
+          <section class="panel" id="import">
+            <article class="card">
+              <p class="label">LOCAL TRANSCRIPTS</p>
+              <h2>Import JSONL, JSON, or text</h2>
+              <p>Files are parsed locally. Raw transcript text is not uploaded.</p>
+              <label class="file">Choose files<input id="files" type="file" accept=".jsonl,.json,.txt" multiple></label>
+              <pre id="summary" hidden></pre>
+            </article>
+          </section>
+        </div>
+        <footer class="privacy">Temporary page access · no prompt auto-submit · no developer API</footer>
+      </section>
 
-    <div class="toolbar" id="toolbar" role="toolbar" aria-label="tokenlean selection tools" hidden>
-      <span class="tb-brand" aria-hidden="true"><img src="${logoUrl}" alt=""></span>
-      <button class="tb-btn primary" id="tb-analyze" type="button">Analyze</button>
-      <button class="tb-btn" id="tb-structure" type="button">Structure</button>
-      <button class="tb-btn" id="tb-insert" type="button">Insert</button>
-    </div>
-
-    <button class="fab" id="fab" type="button" title="Open tokenlean" aria-label="Open tokenlean" aria-expanded="false">
-      <img src="${logoUrl}" alt="">
-    </button>
-    <section class="widget" id="widget" role="dialog" aria-label="tokenlean tools">
-      <header class="top">
-        <span class="mark"><img src="${logoUrl}" alt=""></span>
-        <span class="name">tokenlean</span>
-        <span class="local">Local</span>
-        <button class="icon" id="close" type="button" title="Close">×</button>
-      </header>
-      <nav class="tabs">
-        <button class="tab on" data-tab="prompt" type="button">Prompt</button>
-        <button class="tab" data-tab="inspect" type="button">Inspect</button>
-        <button class="tab" data-tab="import" type="button">Import</button>
-      </nav>
-      <div class="body">
-        <section class="panel on" id="prompt">
-          <article class="card">
-            <p class="label">Selection tools</p>
-            <h2>Review before you submit</h2>
-            <p>Select prompt text to open Analyze · Structure · Insert. Nothing is submitted for you.</p>
-            <button class="action soft" id="read" type="button">Read focused prompt</button>
-            <textarea id="editor" placeholder="Selected or focused prompt text appears here."></textarea>
-            <button class="action soft" id="analyze" type="button">Analyze prompt</button>
-            <button class="action soft" id="improve" type="button">Suggest clearer structure</button>
-            <button class="action" id="insert" type="button">Insert approved text</button>
-            <div id="analysis" hidden></div>
-            <div class="status" id="prompt-status"></div>
-          </article>
-        </section>
-        <section class="panel" id="inspect">
-          <article class="card">
-            <p class="label">Active page</p>
-            <h2>Inspect visible context</h2>
-            <p>Reads a bounded sample only after you click.</p>
-            <button class="action" id="inspect-page" type="button">Inspect this page</button>
-            <pre id="inspection" hidden></pre>
-          </article>
-        </section>
-        <section class="panel" id="import">
-          <article class="card">
-            <p class="label">Local transcripts</p>
-            <h2>Import JSONL, JSON, or text</h2>
-            <p>Files are parsed locally. Raw transcript text is not uploaded.</p>
-            <label class="file">Choose files<input id="files" type="file" accept=".jsonl,.json,.txt" multiple></label>
-            <pre id="summary" hidden></pre>
-          </article>
-        </section>
+      <div class="toolbar" id="toolbar" role="toolbar" aria-label="tokenlean selection tools" hidden>
+        <span class="tb-brand" aria-hidden="true"><img src="${logoUrl}" alt=""></span>
+        <button class="tb-btn primary" id="tb-analyze" type="button">Analyze</button>
+        <button class="tb-btn" id="tb-structure" type="button">Structure</button>
+        <button class="tb-btn" id="tb-insert" type="button">Insert</button>
       </div>
-      <footer class="privacy">Temporary page access · no prompt auto-submit · no developer API</footer>
-    </section>
+    </div>
   `;
 
   const fab = root.querySelector("#fab");
@@ -368,6 +369,17 @@
   const editor = root.querySelector("#editor");
   const promptStatus = root.querySelector("#prompt-status");
   const analysisBox = root.querySelector("#analysis");
+  const inspectStatus = root.querySelector("#inspect"); // panel itself as container or add a status div
+
+  const closeBtn = root.querySelector("#close");
+  const inspectPageBtn = root.querySelector("#inspect-page");
+  const readBtn = root.querySelector("#read");
+  const analyzeBtn = root.querySelector("#analyze");
+  const improveBtn = root.querySelector("#improve");
+  const insertBtn = root.querySelector("#insert");
+  const fileInput = root.querySelector("#files");
+
+  const tabs = root.querySelectorAll(".tab");
 
   const attachDrag = (handle, target) => {
     let drag = null;
@@ -441,8 +453,71 @@
     fab.classList.toggle("hidden", open);
     fab.setAttribute("aria-expanded", String(open));
     if (open) {
-      // Icon stays put; only the panel is shown/positioned relative to it.
       requestAnimationFrame(syncWidgetToFab);
+    }
+  };
+
+  fab.onclick = () => {
+    if (!fabWasDragged()) {
+      setOpen(true);
+    }
+  };
+
+  closeBtn.onclick = () => setOpen(false);
+
+  tabs.forEach(tab => {
+    tab.onclick = () => {
+      tabs.forEach(t => t.classList.remove("on"));
+      root.querySelectorAll(".panel").forEach(p => p.classList.remove("on"));
+      tab.classList.add("on");
+      root.querySelector(`#${tab.dataset.tab}`).classList.add("on");
+    };
+  });
+
+  inspectPageBtn.onclick = () => {
+    inspectStatus.textContent = "Harvesting prompts from Gemini...";
+    chrome.runtime.sendMessage({ action: "harvest_prompts" }, (response) => {
+      if (response && response.success) {
+        inspectStatus.textContent = "Success! Opening dashboard...";
+        chrome.runtime.sendMessage({ action: "open_dashboard" });
+      } else {
+        inspectStatus.textContent = response?.error || "Failed to harvest prompts.";
+      }
+    });
+  };
+
+  readBtn.onclick = () => {
+    const text = lastEditable ? readEditable(lastEditable) : "";
+    editor.value = text;
+    promptStatus.textContent = text ? "Prompt loaded from page." : "Field is empty.";
+  };
+
+  analyzeBtn.onclick = () => runAnalysis(editor.value);
+
+  improveBtn.onclick = () => {
+    const raw = editor.value.trim();
+    if (!raw) {
+      promptStatus.textContent = "Add or load a prompt first.";
+      return;
+    }
+    editor.value = structurePrompt(raw);
+    runAnalysis(editor.value);
+    promptStatus.textContent = "Suggestion ready.";
+  };
+
+  insertBtn.onclick = () => {
+    const value = editor.value;
+    if (!lastEditable) {
+      promptStatus.textContent = "No field to insert into.";
+      return;
+    }
+    writeEditable(lastEditable, value);
+    promptStatus.textContent = "Inserted into page.";
+  };
+
+  fileInput.onchange = (e) => {
+    if (e.target.files.length > 0) {
+      handleImport(Array.from(e.target.files));
     }
   };
 
@@ -829,14 +904,38 @@
   };
 
   root.querySelector("#inspect-page").onclick = () => {
-    const output = root.querySelector("#inspection");
-    output.hidden = false;
-    const headings = [...document.querySelectorAll("h1,h2,h3")]
-      .filter((node) => !host.contains(node)).slice(0, 12)
-      .map((node) => node.innerText.trim()).filter(Boolean);
-    const text = (document.body?.innerText || "").replace(/\s+/g, " ").trim().slice(0, 2800);
-    const fields = document.querySelectorAll("textarea,input[type='text'],[contenteditable='true']").length;
-    output.textContent = `Title: ${document.title}\nURL: ${location.href}\nEditable fields: ${fields}\nHeadings: ${headings.join(" · ") || "None"}\n\nVisible text sample:\n${text || "None"}`;
+    if (!location.href.includes("gemini.google.com")) {
+      alert("Deep prompt auditing is currently optimized exclusively for Gemini. Please open a Gemini chat window to run this analysis.");
+      return;
+    }
+
+    const selectors = {
+      userPrompts: 'user-query, .query-text, .user-message, div[data-message-author="user"]',
+      userPromptsFallback: 'div.query-content, div.user-query, .query-content'
+    };
+    
+    let promptElements = Array.from(document.querySelectorAll(selectors.userPrompts));
+    if (promptElements.length === 0) {
+      promptElements = Array.from(document.querySelectorAll(selectors.userPromptsFallback));
+    }
+    
+    const prompts = promptElements
+      .map(el => el.innerText.replace(/\s+/g, ' ').trim())
+      .filter(text => text.length > 0);
+      
+    if (prompts.length === 0) {
+      alert("No user prompts found on the page yet. Please write a prompt to Gemini first!");
+      return;
+    }
+
+    const recentPrompts = prompts.slice(-10);
+    chrome.storage.local.set({ recentPrompts: recentPrompts }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Storage error:", chrome.runtime.lastError.message);
+        return;
+      }
+      chrome.runtime.sendMessage({ action: "open_dashboard" });
+    });
   };
 
   root.querySelector("#files").onchange = async (event) => {
@@ -852,7 +951,7 @@
           const items = Array.isArray(value) ? value : [value];
           records += items.length;
           for (const item of items) if (item?.role || item?.message?.role) turns++;
-        } catch {
+        } catch (e) {
           if (!file.name.endsWith(".txt")) malformed++;
         }
       }
@@ -864,4 +963,60 @@
     summary.hidden = false;
     summary.textContent = `Files: ${files.length}\nParsed records: ${records}\nDetected turns: ${turns}\nMalformed records skipped: ${malformed}\nCharacters read locally: ${characters.toLocaleString()}`;
   };
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type === "TOKENLEAN_TOGGLE") {
+      host.hidden = !host.hidden;
+      sendResponse({ success: true, hidden: host.hidden });
+    } else if (message?.action === "read_prompt") {
+      const selected = findSelectedPromptField();
+      const text = selected ? selected.text : (lastEditable ? readEditable(lastEditable) : "");
+      sendResponse({ success: true, text: text });
+    } else if (message?.action === "insert_prompt") {
+      const value = message.value;
+      if (lastEditable && document.contains(lastEditable)) {
+        lastEditable.focus();
+        if (lastEditable.isContentEditable || lastEditable.getAttribute("contenteditable") != null) {
+          lastEditable.innerText = value;
+          lastEditable.dispatchEvent(new InputEvent("input", { bubbles: true, data: value }));
+        } else {
+          const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(lastEditable), "value")?.set;
+          setter ? setter.call(lastEditable, value) : (lastEditable.value = value);
+          lastEditable.dispatchEvent(new Event("input", { bubbles: true }));
+          lastEditable.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        sendResponse({ success: true });
+      } else {
+        sendResponse({ success: false, error: "No editable field focused on page." });
+      }
+    } else if (message?.action === "harvest_prompts") {
+      const selectors = {
+        userPrompts: 'user-query, .query-text, .user-message, div[data-message-author="user"]',
+        userPromptsFallback: 'div.query-content, div.user-query, .query-content'
+      };
+      
+      let promptElements = Array.from(document.querySelectorAll(selectors.userPrompts));
+      if (promptElements.length === 0) {
+        promptElements = Array.from(document.querySelectorAll(selectors.userPromptsFallback));
+      }
+      
+      const prompts = promptElements
+        .map(el => el.innerText.replace(/\s+/g, ' ').trim())
+        .filter(text => text.length > 0);
+        
+      if (prompts.length === 0) {
+        sendResponse({ success: false, error: "No prompts found on the page yet." });
+      } else {
+        const recentPrompts = prompts.slice(-10);
+        chrome.storage.local.set({ recentPrompts: recentPrompts }, () => {
+          if (chrome.runtime.lastError) {
+            sendResponse({ success: false, error: chrome.runtime.lastError.message });
+          } else {
+            sendResponse({ success: true });
+          }
+        });
+      }
+      return true; // Keep channel open for async response
+    }
+  });
 })();

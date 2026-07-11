@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoPrompt Tracker - Efficiency & Sustainability Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <script src="lib/chart.min.js" defer></script>
+  <script src="js/dashboard.js" defer></script>
+</head>
+
+<body>
+  <div class="dashboard-wrapper">
+    <!-- Header Section -->
+    <header class="dashboard-header">
+      <div class="logo-container">
+        <span class="logo-icon">🍃</span>
+        <div class="logo-text">
+          <h1>EcoPrompt <span>Tracker</span></h1>
+          <p class="subtitle">Hackathon Edition • Gemini Prompt Telemetry</p>
+        </div>
+      </div>
+
+      <!-- API Key Setup (Interactive & Secure) -->
+      <div class="api-control-panel">
+        <label for="api-key-input">Gemini API Key:</label>
+        <div class="input-group">
+          <input type="password" id="api-key-input" placeholder="Paste your API key here..."
+            autocomplete="current-password">
+          <button id="save-api-key-btn">Save Key</button>
+        </div>
+        <p class="api-help-text">Get a free key from <a href="https://aistudio.google.com/" target="_blank"
+            rel="noopener noreferrer">Google AI Studio</a>. Stored locally.</p>
+      </div>
+    </header>
+
+    <!-- App Main Layout -->
+    <main class="dashboard-content">
+      <!-- Error/Info Banner (Hidden by default) -->
+      <div id="status-banner" class="banner hidden">
+        <span id="banner-icon">ℹ️</span>
+        <span id="banner-text">Welcome! Set your Gemini API key above to generate the hybrid AI audit.</span>
+      </div>
+
+      <!-- Loading State Overlay -->
+      <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <h3>Consulting Gemini Flash...</h3>
+        <p>Analyzing conversation logs & optimization alternatives</p>
+      </div>
+
+      <!-- Telemetry Prep Cards -->
+      <section class="telemetry-overview-row">
+        <div class="telemetry-card">
+          <div class="card-icon">💬</div>
+          <div class="card-data">
+            <h3 id="stat-prompts-count">0</h3>
+            <p>Prompts Scraped</p>
+          </div>
+        </div>
+        <div class="telemetry-card">
+          <div class="card-icon text-warning">🧹</div>
+          <div class="card-data">
+            <h3 id="stat-filler-count">0</h3>
+            <p>Filler Words</p>
+          </div>
+        </div>
+        <div class="telemetry-card">
+          <div class="card-icon text-success">⚡</div>
+          <div class="card-data">
+            <h3 id="stat-token-count">0</h3>
+            <p>Est. Character Load</p>
+          </div>
+        </div>
+        <div class="telemetry-card">
+          <div class="card-icon text-danger">🔄</div>
+          <div class="card-data">
+            <h3 id="stat-redundancy-count">0</h3>
+            <p>Redundancy Phrases</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Visual Dashboard Grid -->
+      <div class="dashboard-grid">
+
+        <!-- Left Column: Score & Sustainability -->
+        <div class="grid-column col-left">
+
+          <!-- The Scoring Ring Card -->
+          <div class="dashboard-card score-card">
+            <h2>Efficiency Score</h2>
+            <p class="card-desc">AI-evaluated optimization of prompting behaviors</p>
+            <div class="chart-container">
+              <canvas id="scoreChart"></canvas>
+              <div class="chart-center-text">
+                <span id="score-number">-</span>
+                <span class="score-denominator">/ 10</span>
+              </div>
+            </div>
+            <div class="score-label-badge" id="score-rating">Pending API Key</div>
+          </div>
+
+          <!-- Carbon/Water Equivalence Matrix -->
+          <div class="dashboard-card sustain-card">
+            <h2>Computational Impact Matrix</h2>
+            <p class="card-desc">Equivalent ecological savings of stripping context waste</p>
+            <div class="sustain-metrics-grid">
+              <div class="sustain-item">
+                <div class="sustain-icon">💧</div>
+                <div class="sustain-info">
+                  <h3 id="sustain-water">0.000 L</h3>
+                  <p>Cooling Water Saved</p>
+                </div>
+              </div>
+              <div class="sustain-item">
+                <div class="sustain-icon">🔋</div>
+                <div class="sustain-info">
+                  <h3 id="sustain-energy">0.000 Wh</h3>
+                  <p>Grid Energy Conserved</p>
+                </div>
+              </div>
+            </div>
+            <div class="sustain-equivalent-box">
+              <p id="sustain-narrative">By optimizing repetitive structures and stripped filler words, you prevent
+                unnecessary computing steps. Based on 100 conversational turns, this scales up dramatically.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: AI Critique & Diff View -->
+        <div class="grid-column col-right">
+
+          <!-- Side-by-Side Prompt Diff View -->
+          <div class="dashboard-card diff-card">
+            <h2>Green Refactoring Diff</h2>
+            <p class="card-desc">Comparison of your longest query vs. token-stripped AI rewrite</p>
+            <div class="diff-container">
+              <div class="diff-panel original-panel">
+                <div class="diff-panel-header">
+                  <span>🔴 Original Prompt</span>
+                  <span id="original-length-badge" class="panel-badge">0 chars</span>
+                </div>
+                <div class="diff-panel-content" id="original-prompt-text">
+                  Scrape prompts from gemini.google.com to view your longest command here.
+                </div>
+              </div>
+              <div class="diff-panel green-panel">
+                <div class="diff-panel-header">
+                  <span>🟢 Green Alternative</span>
+                  <span id="green-length-badge" class="panel-badge green-badge">0 chars</span>
+                </div>
+                <div class="diff-panel-content" id="green-prompt-text">
+                  Input API key and click "Analyze" to see your token-stripped alternative prompt here.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actionable Feedback Points -->
+          <div class="dashboard-card feedback-card">
+            <h2>AI Critique & Habits Audit</h2>
+            <p class="card-desc">Constructive feedback on how to improve your LLM interaction patterns</p>
+            <ul class="feedback-list" id="feedback-list">
+              <li class="feedback-placeholder">
+                Enter API key above to request a diagnostic audit from Gemini Flash.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Raw Scraped Prompts Feed (Collapsible for audits) -->
+      <section class="dashboard-card prompt-logs-card">
+        <div class="accordion-header" id="accordion-toggle">
+          <h2>Scraped Prompts Log (<span id="scraped-log-count">0</span>)</h2>
+          <span class="accordion-arrow">▼</span>
+        </div>
+        <div class="accordion-content hidden" id="accordion-content">
+          <ol class="prompts-list" id="prompts-list">
+            <li>No prompts found in storage. Ensure you are running this on an active Gemini tab and clicked the Analyze
+              button.</li>
+          </ol>
+        </div>
+      </section>
+    </main>
+
+    <footer class="dashboard-footer">
+      <p>EcoPrompt Tracker • Hackathon 24h Project • Powered by Gemini 3.1 Flash Lite</p>
+    </footer>
+  </div>
+</body>
+
+</html>

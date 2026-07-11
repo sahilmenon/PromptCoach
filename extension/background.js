@@ -37,3 +37,43 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   }
   await ensureContentScript(tabId);
 });
+
+// Detect storage write completion to open dashboard.html
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.recentPrompts && changes.recentPrompts.newValue) {
+    chrome.tabs.query({ url: chrome.runtime.getURL("dashboard.html") }, (existingTabs) => {
+      if (existingTabs && existingTabs.length > 0) {
+        chrome.tabs.update(existingTabs[0].id, { active: true });
+      } else {
+        chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
+      }
+    });
+  }
+});
+
+// Message broker to forward messages from popup.js to content.js if chrome.runtime.sendMessage is used
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "harvest_prompts") {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, message, (response) => {
+          sendResponse(response);
+        });
+      } else {
+        sendResponse({ success: false, error: "No active tab found." });
+      }
+    });
+    return true; // Keep message channel open for async response
+  }
+  if (message.action === "open_dashboard") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") }, (tab) => {
+      if (chrome.runtime.lastError) {
+        console.warn("Error creating dashboard tab:", chrome.runtime.lastError.message);
+        sendResponse({ success: false, error: chrome.runtime.lastError.message });
+      } else {
+        sendResponse({ success: true, tabId: tab.id });
+      }
+    });
+    return true;
+  }
+});
