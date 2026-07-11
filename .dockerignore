@@ -1,0 +1,17 @@
+.git
+.gitignore
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/dist
+**/.DS_Store
+apps/api/*.db
+apps/api/promptlens.db
+**/*.md
+!README.md
+docs
+.env
+.env.local
+agent-transcripts

@@ -15,7 +15,10 @@ npm run extension:check
 - `src/hook/`: Claude Code and Codex `UserPromptSubmit` coaching
 - `src/report/`: plain-text and JSON reports
 - `src/credentials.ts`: persistent API-key storage and environment overrides
-- `extension/`: optional Chrome side panel
+- `src/extensionServer.ts`: local bridge for the Chrome extension Analyze button
+- `extension/`: Chrome MV3 floating coach + Gemini audit dashboard
+- `apps/api` + `apps/web`: PromptLens improve / score / strip stack
+- `docs/`: documentation index ([docs/README.md](docs/README.md))
 
 ## Hard rules
 

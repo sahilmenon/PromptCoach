@@ -10,7 +10,7 @@ Every environmental figure LLMGuide prints is derived from the constants in [`sr
 | `WATER_L_PER_KWH_ONSITE` | 1.1 | L per kWh (on-site cooling) | [Li et al., "Making AI Less Thirsty" (2023)](https://arxiv.org/abs/2304.03271) | Typical on-site water usage effectiveness (WUE) for evaporative-cooled datacenters. A point value because the paper reports a representative figure; actual WUE varies by site and season. |
 | `WATER_L_PER_KWH_LIFECYCLE` | 1.8 – 12.0 | L per kWh (lifecycle) | [Li et al. (2023)](https://arxiv.org/abs/2304.03271) | On-site cooling plus the water embedded in electricity generation. The range is wide because it is dominated by the grid mix behind the datacenter — hydro-heavy grids sit near the top, wind/solar-heavy grids near the bottom. |
 | `CACHED_READ_WEIGHT` | 0.1 | dimensionless (fraction of uncached cost) | assumption — see below | Cached-prefix reads skip prefill compute; serving them is not free, but far cheaper than recomputation. |
-| `ESTIMATE_LABEL` | — | — | — | The string appended to every environmental figure: "rough estimate — no first-party figures exist for Claude; see ASSUMPTIONS.md". Printing it is mandatory, not optional. |
+| `ESTIMATE_LABEL` | — | — | — | The string appended to every environmental figure: "rough estimate — no first-party figures exist for Claude; see docs/cli/ASSUMPTIONS.md". Printing it is mandatory, not optional. |
 
 ## The cached-read weighting (10%)
 

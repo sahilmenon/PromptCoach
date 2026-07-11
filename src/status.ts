@@ -48,8 +48,8 @@ export async function runStatus(): Promise<string> {
   const llm = hookLlmConfig();
   out.push(llm
     ? line('OK', `hosted prompt review configured: ${llm.model} via ${llm.provider}` +
-        (storedApiKey(llm.provider) ? ' (saved key)' : ''))
-    : line('WARN', 'hosted prompt review needs `llmguide config set-key` or an API key environment variable'));
+        (llm.provider !== 'cursor' && storedApiKey(llm.provider) ? ' (saved key)' : ''))
+    : line('WARN', 'hosted prompt review needs a key in .env, `llmguide config set-key`, or GEMINI/ANTHROPIC/OPENAI/CURSOR_API_KEY'));
 
   out.push(line('--', '[local analysis]'));
   const file = dbPath();

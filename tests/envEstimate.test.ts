@@ -4,7 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { metaSetJson, openDb, type DB } from '../src/db';
 import {
+  equivalentsFor,
   estimateEnvironment,
+  estimateWasteLedger,
   formatRange,
   formatEnvNumber,
 } from '../src/report/envEstimate';
@@ -153,6 +155,92 @@ describe('estimateEnvironment with a baseline', () => {
     expect(env.effectiveTokensSaved).toBe(0);
     expect(env.energyKwh).toEqual({ low: 0, high: 0 });
     expect(env.windowFootprintKwh).toEqual({ low: 0, high: 0 });
+  });
+});
+
+describe('equivalentsFor', () => {
+  it('converts an energy range into sourced tangible equivalences', () => {
+    // 0.019 kWh = exactly one EPA smartphone charge; 0.038 = two.
+    const eq = equivalentsFor({ low: 0.019, high: 0.038 });
+    expect(eq.smartphoneCharges.low).toBeCloseTo(1, 10);
+    expect(eq.smartphoneCharges.high).toBeCloseTo(2, 10);
+    // 10 W LED bulb: 0.01 kWh/hour.
+    expect(eq.ledBulbHours.low).toBeCloseTo(1.9, 10);
+    expect(eq.ledBulbHours.high).toBeCloseTo(3.8, 10);
+    // EV at 0.22 kWh/km.
+    expect(eq.evKm.low).toBeCloseTo(0.019 / 0.22, 10);
+    expect(eq.evKm.high).toBeCloseTo(0.038 / 0.22, 10);
+  });
+
+  it('maps a zero range to zero equivalences', () => {
+    const eq = equivalentsFor({ low: 0, high: 0 });
+    expect(eq.smartphoneCharges).toEqual({ low: 0, high: 0 });
+    expect(eq.evKm).toEqual({ low: 0, high: 0 });
+  });
+});
+
+describe('estimateWasteLedger', () => {
+  function seedSessionTC(id: string, startedAt: number, turnCount: number): void {
+    db.prepare(
+      `INSERT INTO sessions (id, project, started_at, ended_at, model, turn_count, abandoned, waste_score)
+       VALUES (?, '/tmp/proj', ?, ?, 'claude-sonnet-4-6', ?, 0, 0)`
+    ).run(id, startedAt, startedAt + 1_000, turnCount);
+  }
+  function seedFinding(sessionId: string, category: string): void {
+    db.prepare(
+      `INSERT INTO findings (session_id, category, confidence, evidence, suggestion, created_at, source)
+       VALUES (?, ?, 0.5, 'e', 's', ?, 'heuristic')`
+    ).run(sessionId, category, NOW);
+  }
+
+  it('applies the recurring persistence multiplier (1 + 0.1 x min(turns-1, 30))', () => {
+    // turnCount 11 -> persisted min(10, 30) -> multiplier 2.0
+    seedSessionTC('s', NOW - DAY, 11);
+    seedFinding('s', 'repeated_file_read'); // base {1000, 4000} x 1 x 2.0
+    const ledger = estimateWasteLedger(db, null);
+    expect(ledger.totalEffTokens).toEqual({ low: 2_000, high: 8_000 });
+    expect(ledger.energyKwh.low).toBeCloseTo((2_000 / 1e6) * 0.3, 12);
+    expect(ledger.energyKwh.high).toBeCloseTo((8_000 / 1e6) * 1.0, 12);
+  });
+
+  it('scales cost with session length and caps persistence at 30 turns', () => {
+    seedSessionTC('short', NOW - DAY, 1); // multiplier 1.0
+    seedFinding('short', 'oversized_paste'); // {2000, 6000}
+    seedSessionTC('long', NOW - 2 * DAY, 500); // capped -> multiplier 1 + 0.1*30 = 4.0
+    seedFinding('long', 'oversized_paste'); // {8000, 24000}
+    const ledger = estimateWasteLedger(db, null);
+    expect(ledger.rows).toHaveLength(1);
+    expect(ledger.rows[0].category).toBe('oversized_paste');
+    expect(ledger.rows[0].count).toBe(2);
+    expect(ledger.rows[0].effTokens).toEqual({ low: 10_000, high: 30_000 });
+  });
+
+  it('uses the default bound for unknown categories and sorts by worst case', () => {
+    seedSessionTC('s', NOW - DAY, 1); // multiplier 1.0
+    seedFinding('s', 'mystery_pattern'); // default {500, 2000}
+    seedFinding('s', 'oversized_paste'); // {2000, 6000}
+    const ledger = estimateWasteLedger(db, null);
+    expect(ledger.rows[0].category).toBe('oversized_paste'); // highest high first
+    const mystery = ledger.rows.find((r) => r.category === 'mystery_pattern')!;
+    expect(mystery.effTokens).toEqual({ low: 500, high: 2_000 });
+    expect(ledger.totalEffTokens).toEqual({ low: 2_500, high: 8_000 });
+  });
+
+  it('honors the sinceDays cutoff via session start time', () => {
+    seedSessionTC('recent', NOW - DAY, 1);
+    seedFinding('recent', 'oversized_paste');
+    seedSessionTC('ancient', NOW - 30 * DAY, 1);
+    seedFinding('ancient', 'oversized_paste');
+    const ledger = estimateWasteLedger(db, NOW - 7 * DAY);
+    expect(ledger.rows[0].count).toBe(1); // only the recent session
+    expect(ledger.totalEffTokens).toEqual({ low: 2_000, high: 6_000 });
+  });
+
+  it('returns an empty, zeroed ledger when there are no findings', () => {
+    const ledger = estimateWasteLedger(db, null);
+    expect(ledger.rows).toEqual([]);
+    expect(ledger.totalEffTokens).toEqual({ low: 0, high: 0 });
+    expect(ledger.energyKwh).toEqual({ low: 0, high: 0 });
   });
 });
 

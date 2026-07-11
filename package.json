@@ -32,9 +32,10 @@
     "dist",
     "bin",
     "README.md",
-    "ASSUMPTIONS.md",
+    "docs/cli/ASSUMPTIONS.md",
     "LICENSE",
-    "extension"
+    "extension",
+    ".env.example"
   ],
   "keywords": [
     "claude-code",

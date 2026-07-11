@@ -34,13 +34,13 @@ describe('hosted model configuration', () => {
     });
   });
 
-  it('selects Gemini Flash Lite for a saved Gemini key', () => {
+  it('selects Gemini Flash for a saved Gemini key', () => {
     saveApiKey('gemini', 'gemini-key');
     expect(hookLlmConfig()).toMatchObject({
       provider: 'gemini',
       apiKey: 'gemini-key',
-      model: 'gemini-3.1-flash-lite',
-      baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+      model: 'gemini-2.5-flash',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     });
   });
 
