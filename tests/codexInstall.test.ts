@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { hasCodexLlmGuideHook, installCodexHook, uninstallCodexHook } from '../src/hook/codexInstall';
+import { hasCodexPromptCoachHook, installCodexHook, uninstallCodexHook } from '../src/hook/codexInstall';
 
 let dir: string;
 let file: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-codex-hook-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptcoach-codex-hook-'));
   file = path.join(dir, 'hooks.json');
 });
 
@@ -21,11 +21,11 @@ describe('Codex hook installer', () => {
     const result = installCodexHook(file);
     const config = read();
     expect(result.already).toBe(false);
-    expect(hasCodexLlmGuideHook(config)).toBe(true);
+    expect(hasCodexPromptCoachHook(config)).toBe(true);
     expect(config.hooks.UserPromptSubmit[0].hooks[0]).toMatchObject({
       type: 'command',
       timeout: 15,
-      statusMessage: 'Reviewing prompt with LLMGuide',
+      statusMessage: 'Reviewing prompt with PromptCoach',
     });
   });
 
@@ -34,12 +34,12 @@ describe('Codex hook installer', () => {
     fs.writeFileSync(file, JSON.stringify(original));
     installCodexHook(file);
     expect(read().hooks.Stop).toEqual(original.hooks.Stop);
-    expect(fs.existsSync(file + '.llmguide-backup')).toBe(true);
+    expect(fs.existsSync(file + '.promptcoach-backup')).toBe(true);
     expect(installCodexHook(file).already).toBe(true);
     expect(read().hooks.UserPromptSubmit).toHaveLength(1);
   });
 
-  it('uninstalls only LLMGuide', () => {
+  it('uninstalls only PromptCoach', () => {
     installCodexHook(file);
     const config = read();
     config.hooks.UserPromptSubmit.unshift({ hooks: [{ type: 'command', command: 'foreign' }] });

@@ -10,7 +10,7 @@ let dir: string;
 let db: DB;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-hook-llm-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptcoach-hook-llm-'));
   db = openDb(path.join(dir, 'db.sqlite'));
 });
 

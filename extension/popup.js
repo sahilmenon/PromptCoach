@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
-  // Shared analysis logic from lib/llmguide-core.js (generated from
+  // Shared analysis logic from lib/promptcoach-core.js (generated from
   // src/shared/core.ts — the same functions the CLI uses).
-  const { analyzePromptText, structurePrompt, collectPrompts } = globalThis.LLMGuideCore;
+  const { analyzePromptText, structurePrompt, collectPrompts } = globalThis.PromptCoachCore;
 
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('toggle-widget').onclick = () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (activeTabs) => {
       if (!activeTabs[0]?.id) return;
-      chrome.tabs.sendMessage(activeTabs[0].id, { type: 'LLMGUIDE_TOGGLE' }, () => {
+      chrome.tabs.sendMessage(activeTabs[0].id, { type: 'PROMPTCOACH_TOGGLE' }, () => {
         if (chrome.runtime.lastError) {
           promptStatus.textContent = 'Widget is only available on supported AI sites.';
         }

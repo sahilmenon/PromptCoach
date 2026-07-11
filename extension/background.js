@@ -4,13 +4,13 @@ const AI_MATCH =
 const REVIEW_URL = "http://127.0.0.1:8787/v1/review";
 const HEALTH_URL = "http://127.0.0.1:8787/v1/health";
 
-// The shared core must load before content.js (it defines LLMGuideCore).
+// The shared core must load before content.js (it defines PromptCoachCore).
 // Keep in sync with manifest.json content_scripts.
-const CONTENT_SCRIPTS = ["lib/llmguide-core.js", "content.js"];
+const CONTENT_SCRIPTS = ["lib/promptcoach-core.js", "content.js"];
 
 async function ensureContentScript(tabId) {
   try {
-    await chrome.tabs.sendMessage(tabId, { type: "LLMGUIDE_PING" });
+    await chrome.tabs.sendMessage(tabId, { type: "PROMPTCOACH_PING" });
     return true;
   } catch {
     try {
@@ -78,7 +78,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return;
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: "LLMGUIDE_TOGGLE" });
+    await chrome.tabs.sendMessage(tab.id, { type: "PROMPTCOACH_TOGGLE" });
   } catch {
     try {
       await chrome.tabs.sendMessage(tab.id, { type: "TOKENLEAN_TOGGLE" });

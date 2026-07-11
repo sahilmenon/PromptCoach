@@ -25,7 +25,7 @@ apps/api/*.db
 
 # Local CLI state
 .tokenlean/
-.llmguide/
+.promptcoach/
 CLAUDE.md.suggested
 
 # Build / tooling output

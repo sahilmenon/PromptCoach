@@ -17,24 +17,24 @@ import {
 let dir: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-credentials-'));
-  process.env.LLMGUIDE_CREDENTIALS = path.join(dir, 'credentials.json');
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptcoach-credentials-'));
+  process.env.PROMPTCOACH_CREDENTIALS = path.join(dir, 'credentials.json');
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.OPENAI_API_KEY;
   delete process.env.GEMINI_API_KEY;
   delete process.env.GOOGLE_API_KEY;
-  delete process.env.LLMGUIDE_LLM_API_KEY;
+  delete process.env.PROMPTCOACH_LLM_API_KEY;
   delete process.env.TOKENLEAN_CREDENTIALS;
   delete process.env.TOKENLEAN_LLM_API_KEY;
 });
 
 afterEach(() => {
-  delete process.env.LLMGUIDE_CREDENTIALS;
+  delete process.env.PROMPTCOACH_CREDENTIALS;
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.OPENAI_API_KEY;
   delete process.env.GEMINI_API_KEY;
   delete process.env.GOOGLE_API_KEY;
-  delete process.env.LLMGUIDE_LLM_API_KEY;
+  delete process.env.PROMPTCOACH_LLM_API_KEY;
   delete process.env.TOKENLEAN_CREDENTIALS;
   delete process.env.TOKENLEAN_LLM_API_KEY;
   fs.rmSync(dir, { recursive: true, force: true });
@@ -57,7 +57,7 @@ describe('persistent API credentials', () => {
   });
 
   it('accepts legacy TokenLean environment variables during migration', () => {
-    delete process.env.LLMGUIDE_CREDENTIALS;
+    delete process.env.PROMPTCOACH_CREDENTIALS;
     process.env.TOKENLEAN_CREDENTIALS = path.join(dir, 'legacy-credentials.json');
     process.env.TOKENLEAN_LLM_API_KEY = 'legacy-key';
     expect(credentialsPath()).toBe(process.env.TOKENLEAN_CREDENTIALS);

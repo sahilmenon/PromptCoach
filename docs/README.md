@@ -37,11 +37,11 @@ Hackathon product docs for the `apps/api` + `apps/web` stack.
 apps/api          PromptLens FastAPI backend
 apps/web          PromptLens Vite frontend
 app/              Next.js preview / site helpers (legacy)
-bin/              llmguide CLI entry
+bin/              promptcoach CLI entry
 docs/             This documentation tree
 extension/        Chrome MV3 extension (Analyze + Gemini audit)
 fixtures/         Synthetic sample data
 packages/rules    Shared rule patterns
-src/              llmguide CLI + hook + report + analyzer
+src/              promptcoach CLI + hook + report + analyzer
 tests/            Vitest suite
 ```

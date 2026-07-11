@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "LLMGuide",
+  "name": "PromptCoach",
   "version": "0.3.6",
   "description": "Floating prompt coach with live model review, inspect audit, and local transcript tools.",
   "permissions": ["storage", "activeTab", "scripting", "tabs"],
@@ -22,7 +22,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "LLMGuide",
+    "default_title": "PromptCoach",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -46,13 +46,13 @@
         "https://copilot.microsoft.com/*",
         "https://chat.deepseek.com/*"
       ],
-      "js": ["lib/llmguide-core.js", "content.js"],
+      "js": ["lib/promptcoach-core.js", "content.js"],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["icons/llmguide-logo.png", "icons/tokenlean-logo.png"],
+      "resources": ["icons/promptcoach-logo.png", "icons/tokenlean-logo.png"],
       "matches": ["<all_urls>"]
     },
     {

@@ -3,12 +3,12 @@
  * Performs client-side telemetry prep, requests AI evaluation, and manages Chart.js components.
  *
  * All analysis math (filler words, redundancy similarity, environmental
- * ranges) comes from lib/llmguide-core.js — generated from src/shared/core.ts,
+ * ranges) comes from lib/promptcoach-core.js — generated from src/shared/core.ts,
  * the same logic the CLI uses. Do not re-implement thresholds here.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const core = globalThis.LLMGuideCore;
+  const core = globalThis.PromptCoachCore;
 
   const apiKeyInput = document.getElementById('api-key-input');
   const saveKeyBtn = document.getElementById('save-api-key-btn');

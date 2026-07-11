@@ -3,7 +3,7 @@
  *
  * The base energy/water conversion constants live in src/shared/core.ts —
  * the single source of truth shared with the browser extension (via the
- * generated extension/lib/llmguide-core.js) — and are re-exported here so
+ * generated extension/lib/promptcoach-core.js) — and are re-exported here so
  * existing CLI imports keep working. Constants below the re-exports are
  * CLI-report-specific (equivalences and the avoidable-waste ledger).
  *

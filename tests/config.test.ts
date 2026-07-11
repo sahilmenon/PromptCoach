@@ -8,18 +8,18 @@ import { saveApiKey } from '../src/credentials';
 let dir: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-config-'));
-  process.env.LLMGUIDE_CREDENTIALS = path.join(dir, 'credentials.json');
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptcoach-config-'));
+  process.env.PROMPTCOACH_CREDENTIALS = path.join(dir, 'credentials.json');
   for (const name of [
     'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY',
-    'LLMGUIDE_LLM_API_KEY', 'LLMGUIDE_LLM_PROVIDER', 'LLMGUIDE_LLM_MODEL',
-    'LLMGUIDE_LLM_BASE_URL', 'TOKENLEAN_LLM_API_KEY', 'TOKENLEAN_LLM_PROVIDER',
+    'PROMPTCOACH_LLM_API_KEY', 'PROMPTCOACH_LLM_PROVIDER', 'PROMPTCOACH_LLM_MODEL',
+    'PROMPTCOACH_LLM_BASE_URL', 'TOKENLEAN_LLM_API_KEY', 'TOKENLEAN_LLM_PROVIDER',
     'TOKENLEAN_LLM_MODEL', 'TOKENLEAN_LLM_BASE_URL',
   ]) delete process.env[name];
 });
 
 afterEach(() => {
-  delete process.env.LLMGUIDE_CREDENTIALS;
+  delete process.env.PROMPTCOACH_CREDENTIALS;
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

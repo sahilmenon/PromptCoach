@@ -83,7 +83,7 @@ async function readSecret(provider: LlmProvider): Promise<string> {
 }
 
 const program = new Command();
-program.name('llmguide')
+program.name('promptcoach')
   .description('Prompt-efficiency coach for Claude Code and Codex CLI.')
   .version('0.1.0');
 
@@ -107,7 +107,7 @@ program.command('analyze')
       if (sample === 0) {
         console.log('Haiku analysis skipped (--sample 0); analysis stayed local.');
       } else if (!anthropicApiKey()) {
-        console.log('Haiku analysis skipped: run `llmguide config set-key` to enable it.');
+        console.log('Haiku analysis skipped: run `promptcoach config set-key` to enable it.');
       } else {
         const collected = await collectLlmResults(db, { log: console.log });
         if (collected.batchesCompleted > 0) {
@@ -116,7 +116,7 @@ program.command('analyze')
         const submitted = await submitLlmBatch(db, {
           sample,
           wait: opts.wait,
-          model: process.env.LLMGUIDE_LLM_MODEL || process.env.TOKENLEAN_LLM_MODEL,
+          model: process.env.PROMPTCOACH_LLM_MODEL || process.env.TOKENLEAN_LLM_MODEL,
           log: console.log,
         });
         console.log(submitted.message);
@@ -225,7 +225,7 @@ extension.command('serve')
 program.command('status').description('Check local transcripts, hook, and analysis database')
   .action(async () => console.log(await runStatus()));
 
-const config = program.command('config').description('Manage persistent LLMGuide configuration');
+const config = program.command('config').description('Manage persistent PromptCoach configuration');
 config.command('set-key [key]')
   .description('Save an Anthropic, OpenAI, or Gemini API key for use in every directory')
   .option('-p, --provider <provider>', 'anthropic, openai, or gemini', 'anthropic')

@@ -1,5 +1,5 @@
 /**
- * Shared types used across LLMGuide components.
+ * Shared types used across PromptCoach components.
  * Component-internal types live in their own modules.
  */
 

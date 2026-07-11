@@ -8,27 +8,27 @@ function hookCommand(): string {
   return `node ${path.join(__dirname, 'hook.js')}`;
 }
 
-function isLlmGuideCommand(command: unknown): boolean {
+function isPromptCoachCommand(command: unknown): boolean {
   if (typeof command !== 'string') return false;
   return command === hookCommand() ||
-    ((command.includes('llmguide') || command.includes('tokenlean')) && command.includes('hook.js'));
+    ((command.includes('promptcoach') || command.includes('tokenlean')) && command.includes('hook.js'));
 }
 
-function entryIsLlmGuide(entry: unknown): boolean {
+function entryIsPromptCoach(entry: unknown): boolean {
   if (entry === null || typeof entry !== 'object') return false;
   const handlers = (entry as Record<string, unknown>).hooks;
   return Array.isArray(handlers) && handlers.some((handler) =>
     handler !== null && typeof handler === 'object' &&
-    isLlmGuideCommand((handler as Record<string, unknown>).command)
+    isPromptCoachCommand((handler as Record<string, unknown>).command)
   );
 }
 
-export function hasCodexLlmGuideHook(config: unknown): boolean {
+export function hasCodexPromptCoachHook(config: unknown): boolean {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) return false;
   const hooks = (config as Record<string, unknown>).hooks;
   if (hooks === null || typeof hooks !== 'object' || Array.isArray(hooks)) return false;
   const entries = (hooks as Record<string, unknown>).UserPromptSubmit;
-  return Array.isArray(entries) && entries.some(entryIsLlmGuide);
+  return Array.isArray(entries) && entries.some(entryIsPromptCoach);
 }
 
 function readConfig(file: string): Record<string, unknown> {
@@ -48,9 +48,9 @@ function readConfig(file: string): Record<string, unknown> {
 }
 
 function backupOnce(file: string): void {
-  if (fs.existsSync(file) && !fs.existsSync(file + '.llmguide-backup') &&
+  if (fs.existsSync(file) && !fs.existsSync(file + '.promptcoach-backup') &&
       !fs.existsSync(file + '.tokenlean-backup')) {
-    fs.copyFileSync(file, file + '.llmguide-backup');
+    fs.copyFileSync(file, file + '.promptcoach-backup');
   }
 }
 
@@ -65,7 +65,7 @@ export function installCodexHook(file: string = codexHooksPath()): {
   path: string;
 } {
   const config = readConfig(file);
-  if (hasCodexLlmGuideHook(config)) return { installed: true, already: true, path: file };
+  if (hasCodexPromptCoachHook(config)) return { installed: true, already: true, path: file };
 
   const hooks = config.hooks === undefined ? {} : config.hooks;
   if (hooks === null || typeof hooks !== 'object' || Array.isArray(hooks)) {
@@ -83,7 +83,7 @@ export function installCodexHook(file: string = codexHooksPath()): {
       type: 'command',
       command: hookCommand(),
       timeout: HOOK_TIMEOUT_S,
-      statusMessage: 'Reviewing prompt with LLMGuide',
+      statusMessage: 'Reviewing prompt with PromptCoach',
     }],
   });
   hookMap.UserPromptSubmit = entries;
@@ -110,7 +110,7 @@ export function uninstallCodexHook(file: string = codexHooksPath()): {
   const hookMap = hooks as Record<string, unknown>;
   const entries = hookMap.UserPromptSubmit;
   if (!Array.isArray(entries)) return { removed: false, path: file };
-  const kept = entries.filter((entry) => !entryIsLlmGuide(entry));
+  const kept = entries.filter((entry) => !entryIsPromptCoach(entry));
   if (kept.length === entries.length) return { removed: false, path: file };
 
   backupOnce(file);

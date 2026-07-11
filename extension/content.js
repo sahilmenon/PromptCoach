@@ -1,7 +1,7 @@
 (() => {
   const existing = document.getElementById("tokenlean-floating-root");
   if (existing) {
-    // Re-injection should not toggle visibility — only TOKENLEAN_TOGGLE / LLMGUIDE_TOGGLE does.
+    // Re-injection should not toggle visibility — only TOKENLEAN_TOGGLE / PROMPTCOACH_TOGGLE does.
     return;
   }
 
@@ -29,12 +29,12 @@
   host.setAttribute("data-tokenlean", "floating-widget");
   document.documentElement.appendChild(host);
   const root = host.attachShadow({ mode: "open" });
-  const logoUrl = chrome.runtime.getURL("icons/llmguide-logo.png");
+  const logoUrl = chrome.runtime.getURL("icons/promptcoach-logo.png");
 
-  // Shared analysis logic from extension/lib/llmguide-core.js (generated from
+  // Shared analysis logic from extension/lib/promptcoach-core.js (generated from
   // src/shared/core.ts — the same functions the CLI uses). The manifest and
   // background.js both inject the lib before this file.
-  const { analyzePromptText, structurePrompt, collectPrompts } = globalThis.LLMGuideCore;
+  const { analyzePromptText, structurePrompt, collectPrompts } = globalThis.PromptCoachCore;
 
   // User prompts extracted from the most recent widget import, held for Re-evaluate.
   let importedPrompts = [];
@@ -587,18 +587,18 @@
       }
     </style>
 
-    <div class="toolbar" id="toolbar" role="toolbar" aria-label="LLMGuide selection tools" hidden>
+    <div class="toolbar" id="toolbar" role="toolbar" aria-label="PromptCoach selection tools" hidden>
       <span class="tb-brand" aria-hidden="true"><img src="${logoUrl}" alt=""></span>
       <button class="tb-btn primary" id="tb-analyze" type="button">Analyze</button>
     </div>
 
-    <button class="fab" id="fab" type="button" title="Open LLMGuide" aria-label="Open LLMGuide" aria-expanded="false">
+    <button class="fab" id="fab" type="button" title="Open PromptCoach" aria-label="Open PromptCoach" aria-expanded="false">
       <img src="${logoUrl}" alt="">
     </button>
-    <section class="widget" id="widget" role="dialog" aria-label="LLMGuide tools">
+    <section class="widget" id="widget" role="dialog" aria-label="PromptCoach tools">
       <header class="top">
         <span class="mark"><img src="${logoUrl}" alt=""></span>
-        <span class="name">LLMGuide</span>
+        <span class="name">PromptCoach</span>
         <span class="runtime" id="runtime" title="Analysis runtime">Checking bridge…</span>
         <button class="icon" id="close" type="button" title="Close">×</button>
       </header>
@@ -1227,13 +1227,13 @@
     if (!provider) {
       promptStatus.textContent = info.online
         ? "No API key configured for the bridge."
-        : "Start the local bridge first: llmguide extension serve";
+        : "Start the local bridge first: promptcoach extension serve";
     }
 
     if (!info.online || !info.configured || !provider) {
       const hint = !info.online
-        ? "Start the local bridge first: llmguide extension serve"
-        : "No API key configured. Add GEMINI_API_KEY to .env, then run: llmguide extension serve";
+        ? "Start the local bridge first: promptcoach extension serve"
+        : "No API key configured. Add GEMINI_API_KEY to .env, then run: promptcoach extension serve";
       await showPipeline(
         [
           info.online ? "Connected to local bridge" : "Could not reach local bridge",
@@ -1300,9 +1300,9 @@
 
     if (!response?.ok || !response.review) {
       const hint = response?.error === "not_configured"
-        ? "No API key configured. Add GEMINI_API_KEY to .env, then run: llmguide extension serve"
+        ? "No API key configured. Add GEMINI_API_KEY to .env, then run: promptcoach extension serve"
         : response?.error === "bridge_unreachable"
-          ? "Start the local bridge first: llmguide extension serve"
+          ? "Start the local bridge first: promptcoach extension serve"
           : "Model review unavailable. Check the local bridge and API key, then try again.";
       if (!(await renderCurrentStage(
         { label: `Review failed via ${providerLabel(usedProvider)}`, state: "fail" },
@@ -1744,11 +1744,11 @@
   }, true);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "TOKENLEAN_PING" || message?.type === "LLMGUIDE_PING") {
+    if (message?.type === "TOKENLEAN_PING" || message?.type === "PROMPTCOACH_PING") {
       sendResponse({ ok: true });
       return false;
     }
-    if (message?.type === "TOKENLEAN_TOGGLE" || message?.type === "LLMGUIDE_TOGGLE") {
+    if (message?.type === "TOKENLEAN_TOGGLE" || message?.type === "PROMPTCOACH_TOGGLE") {
       host.hidden = !host.hidden;
       sendResponse({ ok: true, hidden: host.hidden, success: true });
       return false;

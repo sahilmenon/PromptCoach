@@ -14,17 +14,17 @@ import { DEFAULT_MODELS, GEMINI_BASE_URL } from './shared/core';
  * never touch the user's real state.
  */
 
-/** Root for LLMGuide state. Legacy TokenLean variables and data remain readable. */
-export function llmguideHome(): string {
-  const override = process.env.LLMGUIDE_HOME || process.env.TOKENLEAN_HOME;
+/** Root for PromptCoach state. Legacy TokenLean variables and data remain readable. */
+export function promptcoachHome(): string {
+  const override = process.env.PROMPTCOACH_HOME || process.env.TOKENLEAN_HOME;
   if (override) return override;
-  const current = path.join(os.homedir(), '.llmguide');
+  const current = path.join(os.homedir(), '.promptcoach');
   const legacy = path.join(os.homedir(), '.tokenlean');
   return !fs.existsSync(current) && fs.existsSync(legacy) ? legacy : current;
 }
 
 export function dbPath(): string {
-  return process.env.LLMGUIDE_DB || process.env.TOKENLEAN_DB || path.join(llmguideHome(), 'db.sqlite');
+  return process.env.PROMPTCOACH_DB || process.env.TOKENLEAN_DB || path.join(promptcoachHome(), 'db.sqlite');
 }
 
 /** The Claude Code config dir (contains projects/ and settings.json). */
@@ -43,10 +43,10 @@ export function resolveProjectsDir(claudeDir: string): string {
   return claudeDir;
 }
 
-/** Claude Code settings.json. LLMGUIDE_CLAUDE_SETTINGS overrides the default. */
+/** Claude Code settings.json. PROMPTCOACH_CLAUDE_SETTINGS overrides the default. */
 export function claudeSettingsPath(): string {
   return (
-    process.env.LLMGUIDE_CLAUDE_SETTINGS ||
+    process.env.PROMPTCOACH_CLAUDE_SETTINGS ||
     process.env.TOKENLEAN_CLAUDE_SETTINGS ||
     path.join(defaultClaudeDir(), 'settings.json')
   );
@@ -58,7 +58,7 @@ export function codexHome(): string {
 }
 
 export function codexHooksPath(): string {
-  return process.env.LLMGUIDE_CODEX_HOOKS || process.env.TOKENLEAN_CODEX_HOOKS ||
+  return process.env.PROMPTCOACH_CODEX_HOOKS || process.env.TOKENLEAN_CODEX_HOOKS ||
     path.join(codexHome(), 'hooks.json');
 }
 
@@ -82,7 +82,7 @@ export const DEFAULT_LLM_MODEL = DEFAULT_MODELS.anthropic;
 
 function resolveHookLlmProvider(): HookLlmProvider {
   const requested = (
-    process.env.LLMGUIDE_LLM_PROVIDER || process.env.TOKENLEAN_LLM_PROVIDER
+    process.env.PROMPTCOACH_LLM_PROVIDER || process.env.TOKENLEAN_LLM_PROVIDER
   )?.toLowerCase();
   if (
     requested === 'openai'
@@ -92,7 +92,7 @@ function resolveHookLlmProvider(): HookLlmProvider {
   ) {
     return requested;
   }
-  // The provider last saved with `llmguide config set-key` wins when its key
+  // The provider last saved with `promptcoach config set-key` wins when its key
   // is still available; environment detection is the fallback.
   const saved = storedLlmProvider();
   if (saved && storedProviderApiKey(saved)) return saved;
@@ -106,25 +106,25 @@ function resolveHookLlmProvider(): HookLlmProvider {
 function providerApiKey(provider: HookLlmProvider): string | undefined {
   if (provider === 'anthropic') {
     return anthropicApiKey()
-      || process.env.LLMGUIDE_LLM_API_KEY
+      || process.env.PROMPTCOACH_LLM_API_KEY
       || process.env.TOKENLEAN_LLM_API_KEY
       || undefined;
   }
   if (provider === 'openai') {
     return process.env.OPENAI_API_KEY
       || storedProviderApiKey('openai')
-      || process.env.LLMGUIDE_LLM_API_KEY
+      || process.env.PROMPTCOACH_LLM_API_KEY
       || process.env.TOKENLEAN_LLM_API_KEY;
   }
   if (provider === 'gemini') {
     return process.env.GEMINI_API_KEY
       || process.env.GOOGLE_API_KEY
       || storedProviderApiKey('gemini')
-      || process.env.LLMGUIDE_LLM_API_KEY
+      || process.env.PROMPTCOACH_LLM_API_KEY
       || process.env.TOKENLEAN_LLM_API_KEY;
   }
   return process.env.CURSOR_API_KEY
-    || process.env.LLMGUIDE_LLM_API_KEY
+    || process.env.PROMPTCOACH_LLM_API_KEY
     || process.env.TOKENLEAN_LLM_API_KEY;
 }
 
@@ -137,7 +137,7 @@ function defaultBaseUrl(provider: HookLlmProvider): string {
   if (provider === 'openai') return 'https://api.openai.com/v1';
   if (provider === 'gemini') return `${GEMINI_BASE_URL}/openai`;
   // Cursor native paths do not use an OpenAI-style base URL unless the user
-  // points TOKENLEAN_LLM_BASE_URL / LLMGUIDE_LLM_BASE_URL at a proxy.
+  // points TOKENLEAN_LLM_BASE_URL / PROMPTCOACH_LLM_BASE_URL at a proxy.
   return '';
 }
 
@@ -151,7 +151,7 @@ export function hookLlmConfig(): HookLlmConfig | null {
   const defaultTimeout = cursorish ? 60_000 : 7_500;
   const maxTimeout = cursorish ? 180_000 : 9_000;
   const rawTimeout = Number(
-    process.env.LLMGUIDE_LLM_TIMEOUT_MS
+    process.env.PROMPTCOACH_LLM_TIMEOUT_MS
       || process.env.TOKENLEAN_LLM_TIMEOUT_MS
       || defaultTimeout
   );
@@ -159,14 +159,14 @@ export function hookLlmConfig(): HookLlmConfig | null {
     ? Math.min(maxTimeout, Math.max(500, rawTimeout))
     : defaultTimeout;
 
-  const rawBase = process.env.LLMGUIDE_LLM_BASE_URL ?? process.env.TOKENLEAN_LLM_BASE_URL;
+  const rawBase = process.env.PROMPTCOACH_LLM_BASE_URL ?? process.env.TOKENLEAN_LLM_BASE_URL;
   const baseUrl = (rawBase !== undefined ? rawBase : defaultBaseUrl(provider)).replace(/\/+$/, '');
 
   return {
     provider,
     apiKey,
     baseUrl,
-    model: process.env.LLMGUIDE_LLM_MODEL
+    model: process.env.PROMPTCOACH_LLM_MODEL
       || process.env.TOKENLEAN_LLM_MODEL
       || defaultModel(provider),
     timeoutMs,

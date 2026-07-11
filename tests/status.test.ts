@@ -3,10 +3,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-status-'));
-process.env.LLMGUIDE_HOME = dir;
-process.env.LLMGUIDE_DB = path.join(dir, 'db.sqlite');
-process.env.LLMGUIDE_CLAUDE_SETTINGS = path.join(dir, 'settings.json');
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptcoach-status-'));
+process.env.PROMPTCOACH_HOME = dir;
+process.env.PROMPTCOACH_DB = path.join(dir, 'db.sqlite');
+process.env.PROMPTCOACH_CLAUDE_SETTINGS = path.join(dir, 'settings.json');
 process.env.CLAUDE_CONFIG_DIR = path.join(dir, '.claude');
 
 import { runStatus } from '../src/status';
@@ -32,7 +32,7 @@ describe('subscription-layer status', () => {
 
   it('detects the local hook and database counts', async () => {
     fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
-      hooks: { UserPromptSubmit: [{ hooks: [{ type:'command', command:'node llmguide/hook.js' }] }] }
+      hooks: { UserPromptSubmit: [{ hooks: [{ type:'command', command:'node promptcoach/hook.js' }] }] }
     }));
     const db = openDb(path.join(dir, 'db.sqlite'));
     db.prepare("INSERT INTO sessions (id,project) VALUES ('s','p')").run();

@@ -1,6 +1,6 @@
-# LLMGuide
+# PromptCoach
 
-LLMGuide helps you spot wasteful prompting habits in Claude Code and Codex.
+PromptCoach helps you spot wasteful prompting habits in Claude Code and Codex.
 It can analyze past Claude Code sessions, produce a readable report, and give
 optional Haiku, GPT Nano, or Gemini Flash feedback before you submit a prompt.
 
@@ -10,13 +10,13 @@ minutes and only needs to be completed once.
 ## Repository layout
 
 ```text
-src/                 llmguide CLI, hook, analyzer, reports
+src/                 promptcoach CLI, hook, analyzer, reports
 extension/           Chrome extension (Analyze UI + Gemini audit dashboard)
 apps/api             PromptLens FastAPI backend
 apps/web             PromptLens Vite frontend
 docs/                Documentation index — start at docs/README.md
 fixtures/            Synthetic sample data for demos and tests
-bin/llmguide.js      CLI entry point
+bin/promptcoach.js      CLI entry point
 ```
 
 More detail: [docs/README.md](docs/README.md).
@@ -31,7 +31,7 @@ You need:
   Transcript analysis with a hosted model specifically requires Anthropic.
 
 An API key is separate from a Claude Pro or Max subscription and may incur
-small usage charges. LLMGuide still provides local analysis without one.
+small usage charges. PromptCoach still provides local analysis without one.
 
 To check Node.js, open Terminal and run:
 
@@ -48,16 +48,16 @@ Terminal.
 Open Terminal and run:
 
 ```sh
-npm install --global llmguide
+npm install --global promptcoach
 ```
 
 Confirm that the installation worked:
 
 ```sh
-llmguide --version
+promptcoach --version
 ```
 
-That is the entire installation. The `llmguide` command now works from every
+That is the entire installation. The `promptcoach` command now works from every
 project folder. To update later, run the installation command again.
 
 ## One-time setup
@@ -67,19 +67,19 @@ project folder. To update later, run the installation command again.
 Anthropic (Haiku) is the default:
 
 ```sh
-llmguide config set-key
+promptcoach config set-key
 ```
 
 For GPT Nano or Gemini Flash coaching, choose the provider:
 
 ```sh
-llmguide config set-key --provider openai
-llmguide config set-key --provider gemini
+promptcoach config set-key --provider openai
+promptcoach config set-key --provider gemini
 ```
 
 Paste your provider API key at the prompt and press Enter. The characters are
 hidden while you type. Each key is stored at
-`~/.llmguide/credentials.json`, with owner-only file permissions, and works
+`~/.promptcoach/credentials.json`, with owner-only file permissions, and works
 from every project directory. You do not need to export it again.
 
 Skip this step if you only want fully local analysis.
@@ -89,37 +89,37 @@ Skip this step if you only want fully local analysis.
 Run:
 
 ```sh
-llmguide hooks install
+promptcoach hooks install
 ```
 
 This enables coaching for both Claude Code and Codex. To enable only one:
 
 ```sh
-llmguide hooks install claude
-llmguide hooks install codex
+promptcoach hooks install claude
+promptcoach hooks install codex
 ```
 
 If you use Codex, open Codex afterward, enter `/hooks`, and trust the new
-LLMGuide hook when asked.
+PromptCoach hook when asked.
 
 ### 3. Check the setup
 
 Run:
 
 ```sh
-llmguide status
+promptcoach status
 ```
 
 Lines beginning with `OK` are ready. A `WARN` line explains what is missing;
-it does not necessarily mean the rest of LLMGuide is broken.
+it does not necessarily mean the rest of PromptCoach is broken.
 
 ## Run your first analysis
 
 After you have used Claude Code for at least one session, run:
 
 ```sh
-llmguide analyze --wait
-llmguide report
+promptcoach analyze --wait
+promptcoach report
 ```
 
 `analyze` reads new Claude Code session data, runs local checks, and—when a key
@@ -130,8 +130,8 @@ shows your score, evidence, and practical suggestions.
 For analysis that never sends transcript content to an API, run:
 
 ```sh
-llmguide analyze --sample 0
-llmguide report
+promptcoach analyze --sample 0
+promptcoach report
 ```
 
 Analysis is incremental, so later runs only read new transcript content.
@@ -146,7 +146,7 @@ prompt in Claude Code or Codex:
 review: update the login form and run the relevant tests
 ```
 
-LLMGuide sends that prompt to your configured hosted model and displays
+PromptCoach sends that prompt to your configured hosted model and displays
 feedback without sending it to the coding model. Revise it with `review:` for
 another check. When you are happy, remove `review:` and submit it normally.
 
@@ -156,25 +156,25 @@ sent to the hosted model by the coaching hook.
 ## Everyday commands
 
 ```text
-llmguide analyze --wait         Analyze new sessions and wait for Haiku
-llmguide analyze --sample 0     Analyze locally only
-llmguide report                 Show your latest report
-llmguide status                 Check whether everything is configured
-llmguide hooks mute 1           Pause coaching for one day
-llmguide hooks bypass next      Skip coaching for the next prompt
-llmguide config unset-key       Remove all saved provider keys
-llmguide extension serve        Local bridge for the Chrome extension Analyze button
+promptcoach analyze --wait         Analyze new sessions and wait for Haiku
+promptcoach analyze --sample 0     Analyze locally only
+promptcoach report                 Show your latest report
+promptcoach status                 Check whether everything is configured
+promptcoach hooks mute 1           Pause coaching for one day
+promptcoach hooks bypass next      Skip coaching for the next prompt
+promptcoach config unset-key       Remove all saved provider keys
+promptcoach extension serve        Local bridge for the Chrome extension Analyze button
 ```
 
 Advanced report options:
 
 ```text
-llmguide report --since 7d             Show the last seven days
-llmguide report --json                 Produce machine-readable output
-llmguide report --write-claude-md      Write CLAUDE.md.suggested files
+promptcoach report --since 7d             Show the last seven days
+promptcoach report --json                 Produce machine-readable output
+promptcoach report --write-claude-md      Write CLAUDE.md.suggested files
 ```
 
-LLMGuide never edits an existing `CLAUDE.md`; it only writes a suggested
+PromptCoach never edits an existing `CLAUDE.md`; it only writes a suggested
 version for you to review.
 
 ## Browser extension
@@ -186,14 +186,14 @@ To install it from this repository:
 2. Turn on **Developer mode** in the top-right corner.
 3. Click **Load unpacked**.
 4. Select the `extension` folder inside this project.
-5. Pin LLMGuide from Chrome's Extensions menu for easy access.
+5. Pin PromptCoach from Chrome's Extensions menu for easy access.
 
 Keep a local bridge running so Analyze uses the same hosted prompt-review model
 as the CLI hook:
 
 ```text
-# .env with GEMINI_API_KEY (or ANTHROPIC / OPENAI / CURSOR), or llmguide config set-key
-llmguide extension serve
+# .env with GEMINI_API_KEY (or ANTHROPIC / OPENAI / CURSOR), or promptcoach config set-key
+promptcoach extension serve
 ```
 
 The extension can then:
@@ -212,12 +212,12 @@ button sends the extracted prompts to the Gemini audit dashboard, which uses
 your own Gemini key. Skip Deep Audit and Re-evaluate for fully local use.
 
 The extension and the CLI share one analysis core (`src/shared/core.ts`).
-The committed bundle `extension/lib/llmguide-core.js` is generated from it
+The committed bundle `extension/lib/promptcoach-core.js` is generated from it
 with `npm run build:extension-core`; do not edit the bundle by hand.
 
 ## Privacy and cost
 
-Local parsing and heuristic analysis stay on your computer, and LLMGuide has
+Local parsing and heuristic analysis stay on your computer, and PromptCoach has
 no telemetry. Hosted features use your own provider API key:
 
 - `analyze` may send condensed transcript content to Anthropic, including
@@ -228,60 +228,60 @@ no telemetry. Hosted features use your own provider API key:
 
 Choose a provider whose data policy fits your work. Do not analyze transcripts
 containing secrets you are not permitted to share. To guarantee local-only
-analysis, use `llmguide analyze --sample 0`.
+analysis, use `promptcoach analyze --sample 0`.
 
 The saved API key is plain text protected by your operating system's
 owner-only file permissions. Remove it at any time with:
 
 ```sh
-llmguide config unset-key
+promptcoach config unset-key
 ```
 
 For CI, containers, or temporary overrides, `ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), and
-`LLMGUIDE_LLM_API_KEY` are supported. Set `LLMGUIDE_LLM_PROVIDER` when using
+`PROMPTCOACH_LLM_API_KEY` are supported. Set `PROMPTCOACH_LLM_PROVIDER` when using
 the generic key variable.
 
 ## Troubleshooting
 
-### `llmguide: command not found`
+### `promptcoach: command not found`
 
 Close and reopen Terminal, then try:
 
 ```sh
-llmguide status
+promptcoach status
 ```
 
 If installation showed a permissions error, do not add `sudo` unless you
-understand its effects. You can run LLMGuide without a global installation by
+understand its effects. You can run PromptCoach without a global installation by
 placing `npx` before the command:
 
 ```sh
-npx llmguide status
+npx promptcoach status
 ```
 
 ### No sessions appear in the report
 
-LLMGuide currently ingests Claude Code transcript files. Complete at least one
-Claude Code session, then run `llmguide analyze` again. Live prompt coaching
+PromptCoach currently ingests Claude Code transcript files. Complete at least one
+Claude Code session, then run `promptcoach analyze` again. Live prompt coaching
 works with both Claude Code and Codex.
 
 ### Haiku analysis is skipped
 
-Save a key with `llmguide config set-key`, then use `llmguide status` to
+Save a key with `promptcoach config set-key`, then use `promptcoach status` to
 confirm that hosted review is configured.
 
 ### Codex does not show coaching feedback
 
-Run `llmguide hooks install codex`, open `/hooks` inside Codex, and trust the
-LLMGuide hook.
+Run `promptcoach hooks install codex`, open `/hooks` inside Codex, and trust the
+PromptCoach hook.
 
-### Remove LLMGuide integrations
+### Remove PromptCoach integrations
 
 ```sh
-llmguide hooks uninstall
-llmguide config unset-key
-npm uninstall --global llmguide
+promptcoach hooks uninstall
+promptcoach config unset-key
+npm uninstall --global promptcoach
 ```
 
 Hook installation preserves unrelated settings and creates a backup before
@@ -293,25 +293,25 @@ Haiku is the default. These environment variables are available for advanced
 or automated setups:
 
 ```sh
-export LLMGUIDE_LLM_MODEL="claude-haiku-4-5"
-export LLMGUIDE_LLM_BASE_URL="https://api.anthropic.com/v1"
-export LLMGUIDE_LLM_TIMEOUT_MS="7500"
+export PROMPTCOACH_LLM_MODEL="claude-haiku-4-5"
+export PROMPTCOACH_LLM_BASE_URL="https://api.anthropic.com/v1"
+export PROMPTCOACH_LLM_TIMEOUT_MS="7500"
 ```
 
 The live coaching hook can also use OpenAI GPT Nano:
 
 ```sh
-export LLMGUIDE_LLM_PROVIDER="openai"
+export PROMPTCOACH_LLM_PROVIDER="openai"
 export OPENAI_API_KEY="your-api-key"
-export LLMGUIDE_LLM_MODEL="gpt-5.4-nano"
+export PROMPTCOACH_LLM_MODEL="gpt-5.4-nano"
 ```
 
 Or Gemini Flash:
 
 ```sh
-export LLMGUIDE_LLM_PROVIDER="gemini"
+export PROMPTCOACH_LLM_PROVIDER="gemini"
 export GEMINI_API_KEY="your-api-key"
-export LLMGUIDE_LLM_MODEL="gemini-3.1-flash-lite"
+export PROMPTCOACH_LLM_MODEL="gemini-3.1-flash-lite"
 ```
 
 Transcript analysis itself uses Anthropic's Message Batches API and defaults

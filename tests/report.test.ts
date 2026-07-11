@@ -22,7 +22,7 @@ let tmpDir: string;
 let db: DB;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-report-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptcoach-report-'));
   db = openDb(path.join(tmpDir, 'db.sqlite'));
 });
 
@@ -361,7 +361,7 @@ describe('renderReport', () => {
     }
     expect(text).toContain('vs baseline 50.0%');
     expect(text).toMatch(
-      /LLMGuide spent 41\.2k tokens ≈ \$0\.03 analyzing [\d.]+k tokens — [\d.]+% overhead/
+      /PromptCoach spent 41\.2k tokens ≈ \$0\.03 analyzing [\d.]+k tokens — [\d.]+% overhead/
     );
     expect(text).toContain('> "you always forget we use vitest"');
     expect(text).toContain('(0.90 · llm)');
@@ -369,7 +369,7 @@ describe('renderReport', () => {
     expect(text).toContain('+- Tests use vitest; never suggest jest');
     expect(text).toContain('never modified');
     expect(text).toContain(ESTIMATE_LABEL);
-    expect(text).not.toContain('llmguide analyze --wait');
+    expect(text).not.toContain('promptcoach analyze --wait');
     // plain text only — no ANSI escapes
     expect(text).not.toMatch(/\x1b\[/);
   });

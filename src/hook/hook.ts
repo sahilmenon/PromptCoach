@@ -414,9 +414,14 @@ export async function decideNudgeWithLlm(
           '🔴 REVIEW UNAVAILABLE\n\nPrompt not sent. Check the configured API key or network; remove  review:  to send without review.',
       };
     } else {
+      const header = review.needsImprovement ? '🟡 SUGGESTION' : '🟢 READY';
+      let message = `${header}\n\n${review.feedback ?? ''}`.trimEnd();
+      if (review.needsImprovement && review.polishedPrompt) {
+        message += `\n\n✏️ Try this instead:\n${review.polishedPrompt}`;
+      }
       decision = {
         pattern: review.category,
-        message: `${review.needsImprovement ? '🟡 SUGGESTION' : '🟢 READY'}\n\n${review.feedback}`,
+        message,
       };
     }
     logNudge(db, sessionId, project, decision);
