@@ -1,112 +1,264 @@
-# tokenlean
+# LLMGuide
 
-tokenlean is a prompt-efficiency companion for Claude Code and Codex CLI. It
-reads Claude Code transcripts locally and uses each CLI's `UserPromptSubmit`
-hook for optional hosted-model coaching.
+LLMGuide helps you spot wasteful prompting habits in Claude Code and Codex.
+It can analyze past Claude Code sessions, produce a readable report, and give
+optional Haiku feedback before you submit a prompt.
 
-The transcript analyzer stays local. Live prompt coaching uses a separate,
-user-funded API key and defaults to Anthropic's `claude-haiku-4-5` model.
-It does not proxy Claude traffic or replace subscription authentication.
+You do not need to be a developer to set it up. The basic setup takes a few
+minutes and only needs to be completed once.
 
-## How it fits
+## Before you begin
 
-1. You use Claude Code normally through your existing Pro, Max, Team, or
-   Enterprise subscription.
-2. Claude Code writes session JSONL files under `~/.claude/projects/`.
-3. `tokenlean analyze` parses new transcript content locally and stores
-   aggregate analysis in `~/.tokenlean/db.sqlite`.
-4. The optional `UserPromptSubmit` hook sends prompts beginning with `review:`
-   to a cheap hosted model and displays feedback directly in the terminal.
-5. The optional browser extension displays local findings and can inspect or
-   edit a browser prompt only after an explicit button click.
+You need:
 
-## Commands
+- Claude Code and/or Codex CLI;
+- [Node.js 20 or newer](https://nodejs.org/en/download); and
+- optionally, an Anthropic API key for Haiku-powered analysis and coaching.
+
+An API key is separate from a Claude Pro or Max subscription and may incur
+small usage charges. LLMGuide still provides local analysis without one.
+
+To check Node.js, open Terminal and run:
+
+```sh
+node --version
+```
+
+If the version starts with `v20` or higher, you are ready. If Terminal says
+the command was not found, install Node.js from the link above and reopen
+Terminal.
+
+## Install once
+
+Open Terminal and run:
+
+```sh
+npm install --global llmguide
+```
+
+Confirm that the installation worked:
+
+```sh
+llmguide --version
+```
+
+That is the entire installation. The `llmguide` command now works from every
+project folder. To update later, run the installation command again.
+
+## One-time setup
+
+### 1. Save your Anthropic key
+
+If you want Haiku-powered analysis, run:
+
+```sh
+llmguide config set-key
+```
+
+Paste your Anthropic API key at the prompt and press Enter. The characters are
+hidden while you type. The key is stored once at
+`~/.llmguide/credentials.json`, with owner-only file permissions, and works
+from every project directory. You do not need to export it again.
+
+Skip this step if you only want fully local analysis.
+
+### 2. Install prompt coaching
+
+Run:
+
+```sh
+llmguide hooks install
+```
+
+This enables coaching for both Claude Code and Codex. To enable only one:
+
+```sh
+llmguide hooks install claude
+llmguide hooks install codex
+```
+
+If you use Codex, open Codex afterward, enter `/hooks`, and trust the new
+LLMGuide hook when asked.
+
+### 3. Check the setup
+
+Run:
+
+```sh
+llmguide status
+```
+
+Lines beginning with `OK` are ready. A `WARN` line explains what is missing;
+it does not necessarily mean the rest of LLMGuide is broken.
+
+## Run your first analysis
+
+After you have used Claude Code for at least one session, run:
+
+```sh
+llmguide analyze --wait
+llmguide report
+```
+
+`analyze` reads new Claude Code session data, runs local checks, and—when a key
+is configured—sends condensed copies of up to 10 high-waste sessions to Haiku.
+`--wait` keeps the command open until the Haiku results arrive. `report` then
+shows your score, evidence, and practical suggestions.
+
+For analysis that never sends transcript content to an API, run:
+
+```sh
+llmguide analyze --sample 0
+llmguide report
+```
+
+Analysis is incremental, so later runs only read new transcript content.
+Running it regularly is safe and does not duplicate already analyzed sessions.
+
+## Get feedback on a prompt
+
+With the hook and API key configured, add `review:` to the beginning of a
+prompt in Claude Code or Codex:
 
 ```text
-npx tokenlean analyze [--claude-dir PATH]
-npx tokenlean report [--json] [--write-claude-md] [--since 7d]
-npx tokenlean hooks install [claude|codex|all]
-npx tokenlean hooks uninstall [claude|codex|all]
-npx tokenlean hooks mute <days>
-npx tokenlean hooks bypass next|on|off|status
-npx tokenlean status
+review: update the login form and run the relevant tests
 ```
 
-There is deliberately no proxy command and no API-based transcript analysis.
+LLMGuide sends that prompt to Haiku and displays feedback without sending it
+to the coding model. Revise it with `review:` for another check. When you are
+happy, remove `review:` and submit it normally.
 
-## Local analyzer
+Prompts without `review:` pass directly to Claude Code or Codex and are not
+sent to Haiku by the coaching hook.
 
-The parser treats Claude Code's JSONL shape as unstable. Malformed and unknown
-records are skipped instead of crashing, and byte offsets make repeat analysis
-incremental. The heuristic pass detects correction turns, repeated reads,
-oversized pasted code, abandoned sessions, and other locally measurable
-patterns. Reports show evidence and plain-text fixes.
+## Everyday commands
 
-`tokenlean report --write-claude-md` writes `CLAUDE.md.suggested`. It never
-changes `CLAUDE.md` directly.
-
-## Live coaching
-
-Set an API key before starting Claude Code, then install the hook:
-
-```sh
-export ANTHROPIC_API_KEY="your-api-key"
-npx tokenlean hooks install
+```text
+llmguide analyze --wait         Analyze new sessions and wait for Haiku
+llmguide analyze --sample 0     Analyze locally only
+llmguide report                 Show your latest report
+llmguide status                 Check whether everything is configured
+llmguide hooks mute 1           Pause coaching for one day
+llmguide hooks bypass next      Skip coaching for the next prompt
+llmguide config unset-key       Remove the saved Anthropic key
 ```
 
-`TOKENLEAN_LLM_API_KEY` is also accepted. To use OpenAI instead:
+Advanced report options:
 
-```sh
-export TOKENLEAN_LLM_PROVIDER="openai"
-export OPENAI_API_KEY="your-api-key"
-export TOKENLEAN_LLM_BASE_URL="https://api.openai.com/v1"
-export TOKENLEAN_LLM_MODEL="gpt-5.4-nano"
-export TOKENLEAN_LLM_TIMEOUT_MS="7500"
+```text
+llmguide report --since 7d             Show the last seven days
+llmguide report --json                 Produce machine-readable output
+llmguide report --write-claude-md      Write CLAUDE.md.suggested files
 ```
 
-`tokenlean hooks install` merges a command hook into
-`~/.claude/settings.json` and `~/.codex/hooks.json`, creating backups before
-the first change. Pass `claude` or `codex` to install only one integration.
-After installing the Codex hook, open `/hooks` in Codex CLI and trust the new
-TokenLean command. The hook:
-
-- sends prompts beginning with `review:` and the current working directory to the configured API;
-- blocks with terminal feedback and instructions to restore/edit the prompt;
-- blocks when review is unconfigured, unavailable, or times out;
-- returns brief feedback for every reviewed prompt, including prompts judged good;
-- can be muted or uninstalled.
-
-Ordinary prompts go directly to the coding model. Prefix a prompt with
-`review:` to send it only to Haiku and block with feedback. Keep the prefix
-while revising to request another review; remove it and resubmit when you want
-the prompt sent to the coding model. Because reviewed submissions are blocked,
-the coding model never sees the `review:` prefix.
-`bypass next`, `bypass on`, `bypass off`, and `mute <days>` remain available as
-manual controls.
-
-Both CLIs supply the submitted prompt, `session_id`, project directory, and
-local `transcript_path`. Transcript ingestion currently supports Claude Code's
-JSONL format only; live coaching supports both CLIs.
+LLMGuide never edits an existing `CLAUDE.md`; it only writes a suggested
+version for you to review.
 
 ## Browser extension
 
-Load `extension/` as an unpacked Chrome extension. Its side panel can:
+The optional Chrome extension can inspect prompts on supported AI websites.
+To install it from this repository:
 
-- inspect the active page after you click Inspect;
-- read, suggest, and insert prompt text after separate approval clicks;
-- import JSONL, JSON, or text transcripts locally.
+1. Open Chrome and go to `chrome://extensions`.
+2. Turn on **Developer mode** in the top-right corner.
+3. Click **Load unpacked**.
+4. Select the `extension` folder inside this project.
+5. Pin LLMGuide from Chrome's Extensions menu for easy access.
 
-It never submits a prompt. Imported raw text is not uploaded; only a small
-aggregate summary is stored in extension storage.
+The extension only reads a page after you click its controls. It never submits
+a prompt for you. Imported files are parsed locally.
 
-## Privacy
+## Privacy and cost
 
-Transcript analysis stays on the device and there is no telemetry. Prompts
-beginning with `review:` and their working directory are sent to the configured
-model provider. Ordinary prompts are not sent by TokenLean. The full transcript is
-not sent. Prompts and transcripts can contain source code, paths, and user
-prose, so choose a provider whose data policy fits your needs and do not commit
-real transcript files. Tests use synthetic fixtures only.
+Local parsing and heuristic analysis stay on your computer, and LLMGuide has
+no telemetry. Haiku features use your own Anthropic API key:
+
+- `analyze` may send condensed transcript content, including prompt text,
+  code snippets, and file paths;
+- coaching sends only prompts beginning with `review:` and the current working
+  directory; and
+- ordinary prompts are not sent by the coaching hook.
+
+Choose a provider whose data policy fits your work. Do not analyze transcripts
+containing secrets you are not permitted to share. To guarantee local-only
+analysis, use `llmguide analyze --sample 0`.
+
+The saved API key is plain text protected by your operating system's
+owner-only file permissions. Remove it at any time with:
+
+```sh
+llmguide config unset-key
+```
+
+For CI, containers, or temporary overrides, `ANTHROPIC_API_KEY` and
+`LLMGUIDE_LLM_API_KEY` take precedence over the saved key.
+
+## Troubleshooting
+
+### `llmguide: command not found`
+
+Close and reopen Terminal, then try:
+
+```sh
+llmguide status
+```
+
+If installation showed a permissions error, do not add `sudo` unless you
+understand its effects. You can run LLMGuide without a global installation by
+placing `npx` before the command:
+
+```sh
+npx llmguide status
+```
+
+### No sessions appear in the report
+
+LLMGuide currently ingests Claude Code transcript files. Complete at least one
+Claude Code session, then run `llmguide analyze` again. Live prompt coaching
+works with both Claude Code and Codex.
+
+### Haiku analysis is skipped
+
+Save a key with `llmguide config set-key`, then use `llmguide status` to
+confirm that hosted review is configured.
+
+### Codex does not show coaching feedback
+
+Run `llmguide hooks install codex`, open `/hooks` inside Codex, and trust the
+LLMGuide hook.
+
+### Remove LLMGuide integrations
+
+```sh
+llmguide hooks uninstall
+llmguide config unset-key
+npm uninstall --global llmguide
+```
+
+Hook installation preserves unrelated settings and creates a backup before
+the first change.
+
+## Advanced model configuration
+
+Haiku is the default. These environment variables are available for advanced
+or automated setups:
+
+```sh
+export LLMGUIDE_LLM_MODEL="claude-haiku-4-5"
+export LLMGUIDE_LLM_BASE_URL="https://api.anthropic.com/v1"
+export LLMGUIDE_LLM_TIMEOUT_MS="7500"
+```
+
+The live coaching hook can also use an OpenAI-compatible provider:
+
+```sh
+export LLMGUIDE_LLM_PROVIDER="openai"
+export OPENAI_API_KEY="your-api-key"
+export LLMGUIDE_LLM_MODEL="gpt-5.4-nano"
+```
+
+Transcript analysis itself uses Anthropic's Message Batches API and defaults
+to Haiku.
 
 Environmental impact is reported as a sourced range with a mandatory
 uncertainty label. See [ASSUMPTIONS.md](ASSUMPTIONS.md).

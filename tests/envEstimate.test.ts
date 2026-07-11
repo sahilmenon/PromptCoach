@@ -17,7 +17,7 @@ let tmpDir: string;
 let db: DB;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenlean-env-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-env-'));
   db = openDb(path.join(tmpDir, 'db.sqlite'));
 });
 

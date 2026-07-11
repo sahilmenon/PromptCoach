@@ -1,13 +1,16 @@
 import { Command } from 'commander';
+import * as readline from 'readline';
 import { openDb } from './db';
 import { defaultClaudeDir } from './config';
 import { ingestTranscripts } from './analyzer/parser';
 import { runHeuristics, recordBaselineIfReady } from './analyzer/heuristics';
+import { collectLlmResults, submitLlmBatch } from './analyzer/llm';
 import { buildReport, renderReport } from './report/report';
 import { writeClaudeMdSuggestions } from './report/claudeMdDiff';
 import { getHookBypass, installHook, setHookBypass, uninstallHook, muteHooks } from './hook/install';
 import { installCodexHook, uninstallCodexHook } from './hook/codexInstall';
 import { runStatus } from './status';
+import { anthropicApiKey, clearAnthropicApiKey, saveAnthropicApiKey } from './credentials';
 
 function parseSince(raw?: string): number | undefined {
   if (!raw) return undefined;
@@ -16,15 +19,67 @@ function parseSince(raw?: string): number | undefined {
   return Number(match[1]);
 }
 
+function parseSample(raw: string): number {
+  const sample = Number(raw);
+  if (!Number.isInteger(sample) || sample < 0) {
+    throw new Error('--sample expects a non-negative integer');
+  }
+  return sample;
+}
+
+async function readSecret(): Promise<string> {
+  if (!process.stdin.isTTY) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+    return Buffer.concat(chunks).toString('utf8').trim();
+  }
+
+  return new Promise((resolve, reject) => {
+    const input = process.stdin;
+    let value = '';
+    const wasRaw = input.isRaw;
+    const finish = (error?: Error): void => {
+      input.off('data', onData);
+      input.setRawMode(wasRaw);
+      input.pause();
+      process.stdout.write('\n');
+      error ? reject(error) : resolve(value);
+    };
+    const onData = (chunk: Buffer): void => {
+      for (const char of chunk.toString('utf8')) {
+        if (char === '\u0003') return finish(new Error('Cancelled.'));
+        if (char === '\r' || char === '\n') return finish();
+        if (char === '\u007f' || char === '\b') {
+          if (value) {
+            value = value.slice(0, -1);
+            process.stdout.write('\b \b');
+          }
+        } else if (char >= ' ') {
+          value += char;
+          process.stdout.write('*');
+        }
+      }
+    };
+    readline.emitKeypressEvents(input);
+    process.stdout.write('Anthropic API key: ');
+    input.setRawMode(true);
+    input.resume();
+    input.on('data', onData);
+  });
+}
+
 const program = new Command();
-program.name('tokenlean')
-  .description('Prompt-efficiency companion for your Claude Code subscription.')
-  .version('0.2.0');
+program.name('llmguide')
+  .description('Prompt-efficiency coach for Claude Code and Codex CLI.')
+  .version('0.1.0');
 
 program.command('analyze')
-  .description('Analyze local Claude Code transcripts; no API key or network call')
+  .description('Analyze Claude Code transcripts locally and optionally refine findings with Haiku')
   .option('--claude-dir <path>', 'override the Claude Code config directory')
-  .action((opts: { claudeDir?: string }) => {
+  .option('--sample <count>', 'sessions to send to Haiku; 0 keeps analysis local', '10')
+  .option('--wait', 'wait for Haiku batch results (up to 30 minutes)')
+  .action(async (opts: { claudeDir?: string; sample: string; wait?: boolean }) => {
+    const sample = parseSample(opts.sample);
     const db = openDb();
     try {
       const ing = ingestTranscripts(db, opts.claudeDir || defaultClaudeDir());
@@ -35,7 +90,23 @@ program.command('analyze')
       console.log('Heuristics: ' + heur.sessionsScored + ' sessions scored, ' +
         heur.findingsAdded + ' findings written.');
       if (recordBaselineIfReady(db)) console.log('Baseline recorded (week-one reference).');
-      console.log('Analysis stayed local and used no developer API.');
+      if (sample === 0) {
+        console.log('Haiku analysis skipped (--sample 0); analysis stayed local.');
+      } else if (!anthropicApiKey()) {
+        console.log('Haiku analysis skipped: run `llmguide config set-key` to enable it.');
+      } else {
+        const collected = await collectLlmResults(db, { log: console.log });
+        if (collected.batchesCompleted > 0) {
+          console.log(`Collected ${collected.findingsAdded} Haiku finding(s) from ${collected.batchesCompleted} prior batch(es).`);
+        }
+        const submitted = await submitLlmBatch(db, {
+          sample,
+          wait: opts.wait,
+          model: process.env.LLMGUIDE_LLM_MODEL || process.env.TOKENLEAN_LLM_MODEL,
+          log: console.log,
+        });
+        console.log(submitted.message);
+      }
     } finally { db.close(); }
   });
 
@@ -44,9 +115,15 @@ program.command('report')
   .option('--json', 'machine-readable output')
   .option('--write-claude-md', 'write CLAUDE.md.suggested files; never edits CLAUDE.md')
   .option('--since <window>', 'restrict to a recent window, for example 7d')
-  .action((opts: { json?: boolean; writeClaudeMd?: boolean; since?: string }) => {
+  .action(async (opts: { json?: boolean; writeClaudeMd?: boolean; since?: string }) => {
     const db = openDb();
     try {
+      if (anthropicApiKey()) {
+        const collected = await collectLlmResults(db, { log: opts.json ? undefined : console.log });
+        if (!opts.json && collected.batchesCompleted > 0) {
+          console.log(`Collected ${collected.findingsAdded} Haiku finding(s) from ${collected.batchesCompleted} batch(es).`);
+        }
+      }
       const data = buildReport(db, { sinceDays: parseSince(opts.since) });
       console.log(opts.json ? JSON.stringify(data, null, 2) : renderReport(data));
       if (opts.writeClaudeMd) {
@@ -56,7 +133,7 @@ program.command('report')
     } finally { db.close(); }
   });
 
-const hooks = program.command('hooks').description('Manage subscription-layer Claude Code coaching');
+const hooks = program.command('hooks').description('Manage Claude Code and Codex prompt coaching');
 function hookTargets(raw?: string): Array<'claude' | 'codex'> {
   const target = (raw || 'all').toLowerCase();
   if (target === 'all') return ['claude', 'codex'];
@@ -108,6 +185,19 @@ hooks.command('bypass <mode>')
 
 program.command('status').description('Check local transcripts, hook, and analysis database')
   .action(async () => console.log(await runStatus()));
+
+const config = program.command('config').description('Manage persistent LLMGuide configuration');
+config.command('set-key [key]')
+  .description('Save an Anthropic API key for use in every directory')
+  .action(async (key?: string) => {
+    const file = saveAnthropicApiKey(key ?? await readSecret());
+    console.log(`Anthropic API key saved in ${file} (owner-readable only).`);
+  });
+config.command('unset-key')
+  .description('Remove the saved Anthropic API key')
+  .action(() => console.log(clearAnthropicApiKey()
+    ? 'Saved Anthropic API key removed.'
+    : 'No saved Anthropic API key was found.'));
 
 program.parseAsync(process.argv).catch(error => {
   console.error(error instanceof Error ? error.message : String(error));

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "tokenlean",
+  "name": "LLMGuide",
   "version": "0.3.3",
   "description": "A floating, local prompt-efficiency companion for Claude Code.",
 "permissions": ["storage", "activeTab", "scripting", "tabs"],
@@ -21,7 +21,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Toggle tokenlean on this page",
+    "default_title": "Toggle LLMGuide on this page",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -51,7 +51,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["icons/tokenlean-logo.png"],
+      "resources": ["icons/llmguide-logo.png"],
       "matches": ["<all_urls>"]
     },
     {
