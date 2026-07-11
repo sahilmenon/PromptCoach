@@ -323,7 +323,7 @@ describe.skip('legacy pending batches', () => {
 });
 
 describe('renderReport', () => {
-  it('renders every section with the spec self-spend style, no ANSI codes', () => {
+  it('--full renders every section with the spec self-spend style, no ANSI codes', () => {
     seedBasicUsage();
     metaSetJson(db, 'baseline', {
       recordedAt: NOW,
@@ -347,7 +347,7 @@ describe('renderReport', () => {
     seedBatch('b1', 'in_progress', ['s2']);
     addSelfSpend(db, { inputTokens: 30_000, outputTokens: 11_200, usd: 0.03 });
 
-    const text = renderReport(buildReport(db));
+    const text = renderReport(buildReport(db), { full: true });
 
     for (const section of [
       'SCORECARD',
@@ -374,12 +374,44 @@ describe('renderReport', () => {
     expect(text).not.toMatch(/\x1b\[/);
   });
 
-  it('renders friendly empty states', () => {
-    const text = renderReport(buildReport(db));
+  it('--full renders friendly empty states', () => {
+    const text = renderReport(buildReport(db), { full: true });
     expect(text).toContain('hook not yet installed / no activity');
     expect(text).toContain('none yet');
     expect(text).toContain('baseline not recorded yet — savings appear after week 1');
     expect(text).not.toContain('LLM batch(es) still processing');
+  });
+
+  it('default (compact) view leads with footprint, health, and ranked fixes', () => {
+    seedBasicUsage();
+    seedFinding('s1', 'repeated_file_read', {
+      source: 'heuristic',
+      confidence: 0.85,
+      evidence: '/repo/src/app.ts was read 6 times',
+      suggestion: 'Add stable file-location guidance to CLAUDE.md',
+    });
+
+    const text = renderReport(buildReport(db));
+
+    // Compact sections present, digestible headers.
+    for (const section of ['PromptCoach', 'FOOTPRINT', 'HEALTH', 'TOP FIXES']) {
+      expect(text).toContain(section);
+    }
+    // Friendly category label + actionable fix, not the raw slug dump.
+    expect(text).toContain('Repeated file reads');
+    expect(text).toContain('→ Add stable file-location guidance to CLAUDE.md');
+    // Detailed-only sections stay behind --full.
+    expect(text).not.toContain('SCORECARD');
+    expect(text).not.toContain('ENVIRONMENTAL ESTIMATE');
+    // Plain text only when captured (no TTY) — no ANSI escapes.
+    expect(text).not.toMatch(/\x1b\[/);
+  });
+
+  it('compact view survives an empty database without crashing', () => {
+    const text = renderReport(buildReport(db));
+    expect(text).toContain('PromptCoach');
+    expect(text).toContain('none yet — run `promptcoach analyze`');
+    expect(text).not.toMatch(/\x1b\[/);
   });
 });
 

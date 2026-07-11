@@ -127,9 +127,10 @@ program.command('analyze')
 program.command('report')
   .description('Print the local scorecard, findings, and CLAUDE.md suggestions')
   .option('--json', 'machine-readable output')
+  .option('--full', 'show the detailed breakdown (every section, full CLAUDE.md diffs)')
   .option('--write-claude-md', 'write CLAUDE.md.suggested files; never edits CLAUDE.md')
   .option('--since <window>', 'restrict to a recent window, for example 7d')
-  .action(async (opts: { json?: boolean; writeClaudeMd?: boolean; since?: string }) => {
+  .action(async (opts: { json?: boolean; full?: boolean; writeClaudeMd?: boolean; since?: string }) => {
     const db = openDb();
     try {
       if (anthropicApiKey()) {
@@ -139,7 +140,7 @@ program.command('report')
         }
       }
       const data = buildReport(db, { sinceDays: parseSince(opts.since) });
-      console.log(opts.json ? JSON.stringify(data, null, 2) : renderReport(data));
+      console.log(opts.json ? JSON.stringify(data, null, 2) : renderReport(data, { full: opts.full }));
       if (opts.writeClaudeMd) {
         const written = writeClaudeMdSuggestions(db);
         console.log(written.length ? written.map(p => 'Wrote ' + p).join('\n') : 'No suggestions to write yet.');

@@ -307,7 +307,11 @@ function buildSelfSpend(db: DB): SelfSpendReport {
 const WIDTH = 78;
 
 /** Plain-text rendering, no color dependency. */
-export function renderReport(data: ReportData): string {
+export function renderReport(data: ReportData, opts?: { full?: boolean }): string {
+  return opts?.full ? renderFull(data) : renderCompact(data);
+}
+
+function renderFull(data: ReportData): string {
   const lines: string[] = [];
   const windowLabel =
     data.sinceDays === null ? 'all time' : `last ${data.sinceDays} day(s)`;
@@ -327,6 +331,185 @@ export function renderReport(data: ReportData): string {
 
   lines.push('');
   return lines.join('\n');
+}
+
+/* ------------------------------------------------------------------ */
+/* Compact view (default): scannable, prioritized, low-noise.          */
+/* Lead with the footprint, a health snapshot, the ranked fixes that   */
+/* matter, and one call to action. `--full` still prints everything.   */
+/* ------------------------------------------------------------------ */
+
+const COMPACT_WIDTH = 62;
+
+/** Plain-language label + one-line explanation for each finding category. */
+const CATEGORY_INFO: Record<string, { label: string; blurb: string }> = {
+  repeated_file_read: { label: 'Repeated file reads', blurb: 'Claude re-read the same files within a session.' },
+  resupplied_context: { label: 'Re-supplied context', blurb: 'The same context was gathered again across turns.' },
+  oversized_paste: { label: 'Oversized pastes', blurb: 'A large block was pasted inline instead of referenced by path.' },
+  correction_turn: { label: 'Correction turns', blurb: 'You had to correct Claude mid-task.' },
+  overscoped_ask: { label: 'Overscoped asks', blurb: 'One prompt bundled several separate tasks.' },
+  rework_loop: { label: 'Rework loops', blurb: 'Repeated corrections circling the same change.' },
+  abandonment: { label: 'Abandoned sessions', blurb: 'Session stopped right after a correction.' },
+  vague_opening: { label: 'Vague openings', blurb: 'The opening prompt lacked a concrete target.' },
+  missing_convention: { label: 'Missing conventions', blurb: 'A recurring project rule was never written down.' },
+};
+
+function prettyCategory(category: string): { label: string; blurb: string } {
+  return (
+    CATEGORY_INFO[category] ?? {
+      label: category.replace(/_/g, ' ').replace(/^\w/, (m) => m.toUpperCase()),
+      blurb: '',
+    }
+  );
+}
+
+function renderCompact(data: ReportData): string {
+  // Color only on a real terminal; honour NO_COLOR. Tests capture the string
+  // (no TTY) so they stay ANSI-free.
+  const useColor = process.env.NO_COLOR === undefined && process.stdout.isTTY === true;
+  const paint = (code: string) => (s: string) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : s);
+  const bold = paint('1');
+  const dim = paint('2');
+  const green = paint('32');
+  const yellow = paint('33');
+  const red = paint('31');
+  const cyan = paint('36');
+
+  const out: string[] = [];
+  const rule = () => out.push(dim('─'.repeat(COMPACT_WIDTH)));
+  const date = new Date(data.generatedAt).toISOString().slice(0, 10);
+  const windowLabel = data.sinceDays === null ? 'all time' : `last ${data.sinceDays}d`;
+
+  out.push(bold('PromptCoach') + dim(`  ·  ${windowLabel}  ·  ${date}`));
+  rule();
+
+  // FOOTPRINT --------------------------------------------------------
+  const env = data.env;
+  out.push('');
+  out.push(bold('FOOTPRINT'));
+  out.push(
+    '  ≈ ' +
+      cyan(formatRange(env.windowFootprintKwh, 'kWh')) +
+      dim('   ·   ' + formatRange(env.windowEquivalents.smartphoneCharges, 'phone charges')) +
+      dim('   ·   ' + formatRange(env.windowEquivalents.evKm, 'km in an EV'))
+  );
+  if (env.energyKwh === null) {
+    out.push(dim('  Building your week-1 baseline — savings appear after a few days.'));
+  } else if ((env.effectiveTokensSaved ?? 0) <= 0) {
+    out.push(dim('  No savings vs your baseline yet — fixing the habits below is the fastest win.'));
+  } else {
+    out.push(
+      '  ' +
+        green('↓ saved ' + formatRange(env.energyKwh, 'kWh')) +
+        dim(
+          ' vs baseline (≈ ' +
+            formatRange(equivalentsFor(env.energyKwh).smartphoneCharges, 'phone charges') +
+            ') — keep it up'
+        )
+    );
+  }
+
+  // HEALTH -----------------------------------------------------------
+  const sc = data.scorecard;
+  const verdict = (good: boolean, ok: boolean) =>
+    good ? green('great') : ok ? yellow('ok') : red('high');
+  const rowLabel = (s: string) => '  ' + s.padEnd(13);
+  out.push('');
+  out.push(bold('HEALTH'));
+
+  let corrLine =
+    rowLabel('corrections') +
+    pct(sc.correctionRate).padEnd(7) +
+    ' ' +
+    verdict(sc.correctionRate <= 0.05, sc.correctionRate <= 0.12);
+  if (sc.baselineCorrectionRate !== null && sc.correctionDelta !== null) {
+    const pp = sc.correctionDelta * 100;
+    const arrow = pp <= 0 ? '↓' : '↑';
+    corrLine += dim(`   (baseline ${pct(sc.baselineCorrectionRate)}, ${arrow}${Math.abs(pp).toFixed(1)}pp)`);
+  }
+  out.push(corrLine);
+
+  if (sc.cacheHitRate !== null) {
+    out.push(
+      rowLabel('cache hits') +
+        pct(sc.cacheHitRate).padEnd(7) +
+        ' ' +
+        verdict(sc.cacheHitRate >= 0.9, sc.cacheHitRate >= 0.7)
+    );
+  }
+  out.push(
+    rowLabel('volume') +
+      dim(
+        `${fmtInt(sc.sessions)} sessions · ${fmtInt(sc.userTurns)} prompts · ${fmtTokens(sc.outputTokens)} out tok`
+      )
+  );
+
+  // TOP FIXES --------------------------------------------------------
+  out.push('');
+  out.push(bold('TOP FIXES') + dim('  ·  ranked by wasted tokens'));
+  const rows = data.wasteLedger.rows;
+  if (rows.length === 0) {
+    out.push(dim('  none yet — run `promptcoach analyze` after a few sessions.'));
+  } else {
+    const suggestionByCat = new Map<string, string>();
+    for (const g of data.findings) {
+      if (g.examples[0]) suggestionByCat.set(g.category, g.examples[0].suggestion);
+    }
+    const maxHigh = Math.max(...rows.map((r) => r.effTokens.high), 1);
+    rows.slice(0, 3).forEach((row, i) => {
+      const info = prettyCategory(row.category);
+      const blocks = Math.max(1, Math.round((row.effTokens.high / maxHigh) * 11));
+      out.push(
+        bold(` ${i + 1} `) +
+          bold(info.label.padEnd(22)) +
+          dim(`${row.count}×`.padStart(5) + '  ') +
+          `~${fmtTokenRange(row.effTokens)} tok`.padEnd(20) +
+          cyan('█'.repeat(blocks))
+      );
+      if (info.blurb) out.push(dim('     ' + info.blurb));
+      const fix = suggestionByCat.get(row.category);
+      if (fix) out.push('     ' + green('→ ') + oneLine(fix, 66));
+    });
+    if (rows.length > 3) {
+      const restCount = rows.slice(3).reduce((n, r) => n + r.count, 0);
+      out.push(
+        dim(
+          `  +${rows.length - 3} more patterns · ${restCount}× · ~${fmtTokenRange(
+            data.wasteLedger.totalEffTokens
+          )} tok total avoidable  →  promptcoach report --full`
+        )
+      );
+    } else {
+      out.push(dim(`  total avoidable ~${fmtTokenRange(data.wasteLedger.totalEffTokens)} tok`));
+    }
+  }
+
+  // CLAUDE.md --------------------------------------------------------
+  const diffs = data.claudeMdDiffs;
+  if (diffs.length > 0) {
+    const additions = diffs.reduce((n, d) => n + (d.diff.match(/^\+[^+]/gm)?.length ?? 0), 0);
+    out.push('');
+    out.push(bold('CLAUDE.md SUGGESTIONS'));
+    out.push(`  ${additions} addition(s) ready across ${diffs.length} project(s).`);
+    out.push(
+      '  ' +
+        green('→ ') +
+        'promptcoach report --write-claude-md' +
+        dim('   (writes *.suggested; never edits CLAUDE.md)')
+    );
+  }
+
+  // FOOTER -----------------------------------------------------------
+  out.push('');
+  rule();
+  const spend = data.selfSpend;
+  const selfTokens = spend.inputTokens + spend.outputTokens;
+  const overhead = spend.overheadPct === null ? 'n/a overhead' : `${spend.overheadPct.toFixed(1)}% overhead`;
+  out.push(dim(`Analyzer cost ${fmtTokens(selfTokens)} tok · ~$${spend.usd.toFixed(2)} · ${overhead}`));
+  out.push(dim('Rough estimate — see docs/cli/ASSUMPTIONS.md · full breakdown: promptcoach report --full'));
+
+  out.push('');
+  return out.join('\n');
 }
 
 /**
@@ -558,6 +741,11 @@ export function fmtTokens(n: number): string {
 /** "1.0k–4.0k"-style rendering for a token range. */
 function fmtTokenRange(r: Range): string {
   return `${fmtTokens(r.low)}–${fmtTokens(r.high)}`;
+}
+
+/** Thousands-grouped integer, locale-independent so output is deterministic. */
+function fmtInt(n: number): string {
+  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 function pct(rate: number): string {
