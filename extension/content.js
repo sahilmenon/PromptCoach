@@ -1,8 +1,9 @@
 (() => {
   const existing = document.getElementById("tokenlean-floating-root");
   if (existing) {
-    // Re-injection should not toggle visibility — only TOKENLEAN_TOGGLE / PROMPTCOACH_TOGGLE does.
-    return;
+    // A DOM shell can outlive its isolated extension context after an extension
+    // reload. Replace it when this script is explicitly re-injected.
+    existing.remove();
   }
 
   let lastEditable = null;
@@ -29,7 +30,8 @@
   host.setAttribute("data-tokenlean", "floating-widget");
   document.documentElement.appendChild(host);
   const root = host.attachShadow({ mode: "open" });
-  const logoUrl = chrome.runtime.getURL("icons/promptcoach-logo.png");
+  const logoUrl = chrome.runtime.getURL("icons/icon32.png");
+  const launcherLogoUrl = chrome.runtime.getURL("icons/prompt-coach-launcher.svg");
 
   // Shared analysis logic from extension/lib/promptcoach-core.js (generated from
   // src/shared/core.ts — the same functions the CLI uses). The manifest and
@@ -38,6 +40,27 @@
 
   // User prompts extracted from the most recent widget import, held for Re-evaluate.
   let importedPrompts = [];
+
+  const STORAGE_UNAVAILABLE_MESSAGE =
+    "Prompt Coach was updated. Refresh this page to reconnect the widget.";
+
+  const setLocalStorage = (values) => new Promise((resolve, reject) => {
+    const storage = globalThis.chrome?.storage?.local;
+    const runtime = globalThis.chrome?.runtime;
+    if (!storage || !runtime?.id) {
+      reject(new Error(STORAGE_UNAVAILABLE_MESSAGE));
+      return;
+    }
+    try {
+      storage.set(values, () => {
+        const lastError = runtime.lastError;
+        if (lastError) reject(new Error(lastError.message || STORAGE_UNAVAILABLE_MESSAGE));
+        else resolve();
+      });
+    } catch (error) {
+      reject(new Error(error?.message || STORAGE_UNAVAILABLE_MESSAGE));
+    }
+  });
 
   const isEditableRoot = (node) => {
     if (!(node instanceof HTMLElement) || host.contains(node)) return false;
@@ -348,17 +371,24 @@
       .fab {
         position: fixed; right: 18px; bottom: 18px; z-index: 2147483647;
         display: grid; place-items: center;
-        width: 28px; height: 28px; padding: 0; border: 1px solid var(--line);
-        border-radius: 8px; cursor: pointer; background: var(--paper);
+        width: 46px; height: 46px; padding: 0; border: 1px solid #cfd9d2;
+        border-radius: 50%; cursor: grab; background: var(--paper);
+        box-shadow: 0 8px 24px rgba(15,38,29,.18), 0 0 0 4px rgba(255,255,255,.55);
+        touch-action: none;
         font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        transition: border-color .15s ease, background .15s ease;
+        transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease;
       }
-      .fab:hover { border-color: #c9cec8; background: var(--wash); }
-      .fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      .fab img { width: 18px; height: 18px; border-radius: 4px; object-fit: contain; pointer-events: none; }
+      .fab:hover {
+        border-color: #b8c9bd; background: #fbfdfb;
+        box-shadow: 0 10px 28px rgba(15,38,29,.22), 0 0 0 5px rgba(232,243,236,.75);
+        transform: translateY(-2px);
+      }
+      .fab:active { cursor: grabbing; transform: translateY(0) scale(.98); }
+      .fab:focus-visible { outline: 3px solid rgba(31,107,74,.3); outline-offset: 3px; }
+      .fab img { display:block; width: 28px; height: 28px; object-fit: contain; pointer-events: none; }
       .fab.hidden { visibility: hidden; pointer-events: none; }
       .widget {
-        position: fixed; right: 18px; bottom: 54px; z-index: 2147483647;
+        position: fixed; right: 18px; bottom: 76px; z-index: 2147483647;
         display: none; flex-direction: column; overflow: hidden;
         width: min(340px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 72px));
         color: var(--ink); background: var(--paper);
@@ -371,8 +401,8 @@
         padding: 0 12px; border-bottom: 1px solid var(--line);
         background: var(--paper); cursor: move; user-select: none;
       }
-      .mark { display:grid; place-items:center; width:22px; height:22px;
-        overflow:hidden; border-radius:5px; }
+      .mark { display:grid; place-items:center; width:26px; height:26px;
+        overflow:hidden; border-radius:7px; }
       .mark img { display:block; width:100%; height:100%; object-fit:contain; }
       .name { font-size: 13px; font-weight: 700; }
       .runtime {
@@ -564,7 +594,7 @@
         display: grid; place-items: center; width: 34px;
         border-right: 1px solid var(--line); background: var(--wash);
       }
-      .tb-brand img { width: 16px; height: 16px; border-radius: 4px; object-fit: contain; }
+      .tb-brand img { display:block; width: 20px; height: 20px; border-radius: 6px; object-fit: contain; }
       .tb-btn {
         appearance: none; border: 0; margin: 0; padding: 9px 12px;
         background: transparent; color: var(--ink); cursor: pointer;
@@ -583,22 +613,25 @@
 
       @media (max-width: 520px) {
         .fab { right:12px; bottom:12px; }
-        .widget { right:12px; bottom:48px; width:calc(100vw - 24px); max-height:calc(100vh - 64px); }
+        .widget { right:12px; bottom:68px; width:calc(100vw - 24px); max-height:calc(100vh - 84px); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fab { transition: none; }
       }
     </style>
 
-    <div class="toolbar" id="toolbar" role="toolbar" aria-label="PromptCoach selection tools" hidden>
+    <div class="toolbar" id="toolbar" role="toolbar" aria-label="Prompt Coach selection tools" hidden>
       <span class="tb-brand" aria-hidden="true"><img src="${logoUrl}" alt=""></span>
       <button class="tb-btn primary" id="tb-analyze" type="button">Analyze</button>
     </div>
 
-    <button class="fab" id="fab" type="button" title="Open PromptCoach" aria-label="Open PromptCoach" aria-expanded="false">
-      <img src="${logoUrl}" alt="">
+    <button class="fab" id="fab" type="button" title="Open Prompt Coach" aria-label="Open Prompt Coach" aria-expanded="false">
+      <img src="${launcherLogoUrl}" alt="">
     </button>
-    <section class="widget" id="widget" role="dialog" aria-label="PromptCoach tools">
+    <section class="widget" id="widget" role="dialog" aria-label="Prompt Coach tools">
       <header class="top">
         <span class="mark"><img src="${logoUrl}" alt=""></span>
-        <span class="name">PromptCoach</span>
+        <span class="name">Prompt Coach</span>
         <span class="runtime" id="runtime" title="Analysis runtime">Checking bridge…</span>
         <button class="icon" id="close" type="button" title="Close">×</button>
       </header>
@@ -1832,13 +1865,9 @@
         sendResponse({ success: false, error: "No prompts found on the page yet." });
         return false;
       }
-      chrome.storage.local.set({ recentPrompts: prompts.slice(-10), recentPromptsAt: Date.now() }, () => {
-        if (chrome.runtime.lastError) {
-          sendResponse({ success: false, error: chrome.runtime.lastError.message });
-        } else {
-          sendResponse({ success: true });
-        }
-      });
+      void setLocalStorage({ recentPrompts: prompts.slice(-10), recentPromptsAt: Date.now() })
+        .then(() => sendResponse({ success: true }))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
       return true;
     }
     return false;
@@ -1864,7 +1893,7 @@
     runAnalysis(editor.value || readEditable(lastEditable));
   };
 
-  root.querySelector("#inspect-page").onclick = () => {
+  root.querySelector("#inspect-page").onclick = async () => {
     const inspectStatus = root.querySelector("#inspect-status");
     if (!location.href.includes("gemini.google.com")) {
       if (inspectStatus) {
@@ -1889,16 +1918,14 @@
       return;
     }
     const recentPrompts = prompts.slice(-10);
-    // Storing recentPrompts (+ a fresh timestamp) triggers the background
-    // storage listener, which opens the dashboard — the single open path
-    // shared with popup Import.
-    chrome.storage.local.set({ recentPrompts, recentPromptsAt: Date.now() }, () => {
-      if (chrome.runtime.lastError) {
-        if (inspectStatus) inspectStatus.textContent = chrome.runtime.lastError.message;
-        return;
-      }
+    // Storing recentPrompts with a fresh timestamp triggers the background
+    // listener even when the prompt array matches the previous harvest.
+    try {
+      await setLocalStorage({ recentPrompts, recentPromptsAt: Date.now() });
       if (inspectStatus) inspectStatus.textContent = "Opening dashboard…";
-    });
+    } catch (error) {
+      if (inspectStatus) inspectStatus.textContent = error.message;
+    }
   };
 
   root.querySelector("#files").onchange = async (event) => {
@@ -1927,9 +1954,15 @@
       }
     }
     importedPrompts = prompts;
-    await chrome.storage.local.set({
-      transcriptSummary: { files: files.length, records, malformed, turns, characters, importedAt: Date.now() },
-    });
+    try {
+      await setLocalStorage({
+        transcriptSummary: { files: files.length, records, malformed, turns, characters, importedAt: Date.now() },
+      });
+    } catch (error) {
+      importStatus.textContent = error.message;
+      reevaluateBtn.disabled = true;
+      return;
+    }
     const summary = root.querySelector("#summary");
     summary.hidden = false;
     summary.textContent = `Files: ${files.length}\nParsed records: ${records}\nDetected turns: ${turns}\nUser prompts found: ${prompts.length}\nMalformed records skipped: ${malformed}\nCharacters read locally: ${characters.toLocaleString()}`;
@@ -1948,7 +1981,11 @@
       return;
     }
     importStatus.textContent = "Opening audit dashboard…";
-    await chrome.storage.local.set({ recentPrompts: importedPrompts, recentPromptsAt: Date.now() });
+    try {
+      await setLocalStorage({ recentPrompts: importedPrompts, recentPromptsAt: Date.now() });
+    } catch (error) {
+      importStatus.textContent = error.message;
+    }
   };
 
   void refreshBridgeInfo();

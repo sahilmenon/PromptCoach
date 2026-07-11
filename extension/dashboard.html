@@ -4,12 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EcoPrompt Tracker - Efficiency & Sustainability Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
-    rel="stylesheet">
+  <title>Prompt Coach — Prompt History Audit</title>
   <link rel="stylesheet" href="css/dashboard.css">
   <script src="lib/chart.min.js" defer></script>
   <script src="lib/promptcoach-core.js" defer></script>
@@ -21,69 +16,71 @@
     <!-- Header Section -->
     <header class="dashboard-header">
       <div class="logo-container">
-        <span class="logo-icon">🍃</span>
+        <span class="logo-icon"><img src="icons/prompt-coach-logo.svg" alt=""></span>
         <div class="logo-text">
-          <h1>EcoPrompt <span>Tracker</span></h1>
-          <p class="subtitle">Hackathon Edition • Gemini Prompt Telemetry</p>
+          <h1>Prompt <span>Coach</span></h1>
+          <p class="subtitle">Your private prompt coach · History audit</p>
         </div>
       </div>
 
       <!-- API Key Setup (Interactive & Secure) -->
       <div class="api-control-panel">
-        <label for="api-key-input">Gemini API Key:</label>
+        <label for="api-key-input">Gemini API key</label>
         <div class="input-group">
-          <input type="password" id="api-key-input" placeholder="Paste your API key here..."
+          <input type="password" id="api-key-input" placeholder="Paste your key"
             autocomplete="current-password">
-          <button id="save-api-key-btn">Save Key</button>
+          <button id="save-api-key-btn">Save securely</button>
         </div>
-        <p class="api-help-text">Get a free key from <a href="https://aistudio.google.com/" target="_blank"
-            rel="noopener noreferrer">Google AI Studio</a>. Stored locally.</p>
+        <p class="api-help-text">Stored only in this browser. Get a key from <a href="https://aistudio.google.com/" target="_blank"
+            rel="noopener noreferrer">Google AI Studio</a>.</p>
       </div>
     </header>
 
     <!-- App Main Layout -->
     <main class="dashboard-content">
-      <!-- Error/Info Banner (Hidden by default) -->
-      <div id="status-banner" class="banner hidden">
-        <span id="banner-icon">ℹ️</span>
-        <span id="banner-text">Welcome! Set your Gemini API key above to generate the hybrid AI audit.</span>
-      </div>
-
       <!-- Loading State Overlay -->
       <div id="loading-overlay" class="loading-overlay hidden">
         <div class="spinner"></div>
-        <h3>Consulting Gemini Flash...</h3>
-        <p>Analyzing conversation logs & optimization alternatives</p>
+        <h3>Reviewing your prompt history…</h3>
+        <p>Finding recurring habits and clearer alternatives</p>
       </div>
 
-      <!-- Telemetry Prep Cards -->
-      <section class="telemetry-overview-row">
-        <div class="telemetry-card">
-          <div class="card-icon">💬</div>
-          <div class="card-data">
-            <h3 id="stat-prompts-count">0</h3>
-            <p>Prompts Scraped</p>
-          </div>
+      <!-- Coaching summary and audit telemetry -->
+      <section class="audit-summary-panel" aria-labelledby="audit-summary-title">
+        <div id="status-banner" class="banner hidden">
+          <span id="banner-icon">ℹ️</span>
+          <span id="banner-text">Add your Gemini API key to generate a personalized history audit.</span>
         </div>
-        <div class="telemetry-card">
-          <div class="card-icon text-warning">🧹</div>
-          <div class="card-data">
-            <h3 id="stat-filler-count">0</h3>
-            <p>Filler Words</p>
+
+        <div class="coaching-summary-layout">
+          <div class="coaching-summary-copy">
+            <div class="summary-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 9.5 9.5 0 0 1-4-.9L3 21l1.7-4.6A8.5 8.5 0 1 1 21 11.5Z"/><path d="m8.5 11.5 2.2 2.2 4.8-5"/></svg>
+            </div>
+            <div>
+              <p class="summary-eyebrow">Review summary</p>
+              <h2 id="audit-summary-title">Your prompt snapshot</h2>
+              <p id="telemetry-summary">Collect or import prompts to see a coaching summary.</p>
+            </div>
           </div>
-        </div>
-        <div class="telemetry-card">
-          <div class="card-icon text-success">⚡</div>
-          <div class="card-data">
-            <h3 id="stat-token-count">0</h3>
-            <p>Est. Character Load</p>
-          </div>
-        </div>
-        <div class="telemetry-card">
-          <div class="card-icon text-danger">🔄</div>
-          <div class="card-data">
-            <h3 id="stat-redundancy-count">0</h3>
-            <p>Redundancy Phrases</p>
+
+          <div class="telemetry-matrix" aria-label="Prompt review metrics">
+            <div class="telemetry-cell">
+              <div class="telemetry-label"><span class="telemetry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/><path d="M8 17l-4 4v-4M10 12h10a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-7l-3 2v-11Z"/></svg></span><span>Prompts reviewed</span></div>
+              <h3 id="stat-prompts-count">0</h3>
+            </div>
+            <div class="telemetry-cell">
+              <div class="telemetry-label"><span class="telemetry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m7 21-4-4L15.5 4.5a2.8 2.8 0 0 1 4 4Z"/><path d="m6 14 4 4M14 8l4 4M3 21h9"/></svg></span><span>Filler words</span></div>
+              <h3 id="stat-filler-count">0</h3>
+            </div>
+            <div class="telemetry-cell">
+              <div class="telemetry-label"><span class="telemetry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6V4h16v2M9 20h6M12 4v16"/><path d="M7 9H4v6h3M17 9h3v6h-3"/></svg></span><span>Total characters</span></div>
+              <h3 id="stat-token-count">0</h3>
+            </div>
+            <div class="telemetry-cell">
+              <div class="telemetry-label"><span class="telemetry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></svg></span><span>Repeated prompts</span></div>
+              <h3 id="stat-redundancy-count">0</h3>
+            </div>
           </div>
         </div>
       </section>
@@ -96,8 +93,8 @@
 
           <!-- The Scoring Ring Card -->
           <div class="dashboard-card score-card">
-            <h2>Efficiency Score</h2>
-            <p class="card-desc">AI-evaluated optimization of prompting behaviors</p>
+            <h2>Prompt health score</h2>
+            <p class="card-desc">A simple view of clarity, focus, and repeated effort</p>
             <div class="chart-container">
               <canvas id="scoreChart"></canvas>
               <div class="chart-center-text">
@@ -105,34 +102,76 @@
                 <span class="score-denominator">/ 10</span>
               </div>
             </div>
-            <div class="score-label-badge" id="score-rating">Pending API Key</div>
+            <div class="score-label-badge" id="score-rating">Waiting for analysis</div>
           </div>
 
-          <!-- Carbon/Water Equivalence Matrix -->
+          <!-- Before/after resource range graph -->
           <div class="dashboard-card sustain-card">
-            <h2>Computational Impact Matrix</h2>
-            <p class="card-desc">Rough estimate of what trimming this waste would save, as sourced
-              low–high ranges (see ASSUMPTIONS.md)</p>
-            <div class="sustain-metrics-grid">
-              <div class="sustain-item">
-                <div class="sustain-icon">💧</div>
-                <div class="sustain-info">
-                  <h3 id="sustain-water">–</h3>
-                  <p>Cooling Water Saved</p>
-                </div>
-              </div>
-              <div class="sustain-item">
-                <div class="sustain-icon">🔋</div>
-                <div class="sustain-info">
-                  <h3 id="sustain-energy">–</h3>
-                  <p>Grid Energy Conserved</p>
-                </div>
-              </div>
+            <h2>Potential resource savings</h2>
+            <p class="card-desc">Estimated resource use before and after trimming repeated or low-value text</p>
+            <div class="impact-legend" aria-label="Graph legend">
+              <span><i class="legend-low"></i>Low estimate</span>
+              <span><i class="legend-high"></i>High-range extension</span>
             </div>
-            <div class="sustain-equivalent-box">
-              <p id="sustain-narrative">Import or scrape prompts to estimate the energy and water that
-                trimming filler and redundancy would save.</p>
+
+            <div class="impact-graph">
+              <section class="impact-resource" aria-labelledby="water-chart-title">
+                <div class="impact-resource-head">
+                  <div>
+                    <h3 id="water-chart-title">Cooling water</h3>
+                    <p>On-site cooling estimate</p>
+                  </div>
+                  <span class="impact-saved" id="sustain-water">Save –</span>
+                </div>
+                <div class="impact-axis"><span>0 L</span><span id="water-axis-max">–</span></div>
+                <div class="impact-row">
+                  <span class="impact-row-label">Current</span>
+                  <div class="impact-track" id="water-current-bar" role="img" aria-label="Current cooling water estimate">
+                    <span class="impact-low" id="water-current-low"></span>
+                    <span class="impact-high" id="water-current-high"></span>
+                  </div>
+                  <strong id="water-current-value">–</strong>
+                </div>
+                <div class="impact-row optimized">
+                  <span class="impact-row-label">Optimized</span>
+                  <div class="impact-track" id="water-optimized-bar" role="img" aria-label="Optimized cooling water estimate">
+                    <span class="impact-low" id="water-optimized-low"></span>
+                    <span class="impact-high" id="water-optimized-high"></span>
+                  </div>
+                  <strong id="water-optimized-value">–</strong>
+                </div>
+              </section>
+
+              <section class="impact-resource" aria-labelledby="energy-chart-title">
+                <div class="impact-resource-head">
+                  <div>
+                    <h3 id="energy-chart-title">Grid energy</h3>
+                    <p>Estimated inference energy</p>
+                  </div>
+                  <span class="impact-saved" id="sustain-energy">Save –</span>
+                </div>
+                <div class="impact-axis"><span>0 Wh</span><span id="energy-axis-max">–</span></div>
+                <div class="impact-row">
+                  <span class="impact-row-label">Current</span>
+                  <div class="impact-track" id="energy-current-bar" role="img" aria-label="Current grid energy estimate">
+                    <span class="impact-low" id="energy-current-low"></span>
+                    <span class="impact-high" id="energy-current-high"></span>
+                  </div>
+                  <strong id="energy-current-value">–</strong>
+                </div>
+                <div class="impact-row optimized">
+                  <span class="impact-row-label">Optimized</span>
+                  <div class="impact-track" id="energy-optimized-bar" role="img" aria-label="Optimized grid energy estimate">
+                    <span class="impact-low" id="energy-optimized-low"></span>
+                    <span class="impact-high" id="energy-optimized-high"></span>
+                  </div>
+                  <strong id="energy-optimized-value">–</strong>
+                </div>
+              </section>
             </div>
+
+            <p class="impact-disclosure" id="sustain-narrative">Rough estimates from literature ranges — see
+              ASSUMPTIONS.md; these are not measured figures.</p>
           </div>
         </div>
 
@@ -141,25 +180,25 @@
 
           <!-- Side-by-Side Prompt Diff View -->
           <div class="dashboard-card diff-card">
-            <h2>Green Refactoring Diff</h2>
-            <p class="card-desc">Comparison of your longest query vs. token-stripped AI rewrite</p>
+            <h2>Before and after</h2>
+            <p class="card-desc">Compare your longest prompt with a clearer, more focused alternative</p>
             <div class="diff-container">
               <div class="diff-panel original-panel">
                 <div class="diff-panel-header">
-                  <span>🔴 Original Prompt</span>
+                  <span>Original prompt</span>
                   <span id="original-length-badge" class="panel-badge">0 chars</span>
                 </div>
                 <div class="diff-panel-content" id="original-prompt-text">
-                  Scrape prompts from gemini.google.com to view your longest command here.
+                  Collect prompts from gemini.google.com to review your longest prompt here.
                 </div>
               </div>
               <div class="diff-panel green-panel">
                 <div class="diff-panel-header">
-                  <span>🟢 Green Alternative</span>
+                  <span>Suggested prompt</span>
                   <span id="green-length-badge" class="panel-badge green-badge">0 chars</span>
                 </div>
                 <div class="diff-panel-content" id="green-prompt-text">
-                  Input API key and click "Analyze" to see your token-stripped alternative prompt here.
+                  Add your API key to see a clearer alternative here.
                 </div>
               </div>
             </div>
@@ -167,34 +206,33 @@
 
           <!-- Actionable Feedback Points -->
           <div class="dashboard-card feedback-card">
-            <h2>AI Critique & Habits Audit</h2>
-            <p class="card-desc">Constructive feedback on how to improve your LLM interaction patterns</p>
+            <h2>Coaching suggestions</h2>
+            <p class="card-desc">Practical changes you can apply to future prompts</p>
             <ul class="feedback-list" id="feedback-list">
               <li class="feedback-placeholder">
-                Enter API key above to request a diagnostic audit from Gemini Flash.
+                Add your API key above to generate personalized suggestions.
               </li>
             </ul>
           </div>
         </div>
       </div>
 
-      <!-- Raw Scraped Prompts Feed (Collapsible for audits) -->
+      <!-- Raw prompt feed (collapsible for audits) -->
       <section class="dashboard-card prompt-logs-card">
         <div class="accordion-header" id="accordion-toggle">
-          <h2>Scraped Prompts Log (<span id="scraped-log-count">0</span>)</h2>
+          <h2>Prompts included in this audit (<span id="scraped-log-count">0</span>)</h2>
           <span class="accordion-arrow">▼</span>
         </div>
         <div class="accordion-content hidden" id="accordion-content">
           <ol class="prompts-list" id="prompts-list">
-            <li>No prompts found in storage. Ensure you are running this on an active Gemini tab and clicked the Analyze
-              button.</li>
+            <li>No prompts found in storage. Open an active Gemini tab and run a history audit.</li>
           </ol>
         </div>
       </section>
     </main>
 
     <footer class="dashboard-footer">
-      <p>EcoPrompt Tracker • Hackathon 24h Project • Powered by Gemini 3.1 Flash Lite</p>
+      <p>Prompt Coach · Private by default · Powered by Gemini 3.1 Flash Lite</p>
     </footer>
   </div>
 </body>

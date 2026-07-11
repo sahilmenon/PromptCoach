@@ -1,5 +1,5 @@
 /**
- * Dashboard Controller for EcoPrompt Scorer
+ * Dashboard Controller for Prompt Coach
  * Performs client-side telemetry prep, requests AI evaluation, and manages Chart.js components.
  *
  * All analysis math (filler words, redundancy similarity, environmental
@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
   saveKeyBtn.addEventListener('click', () => {
     const key = apiKeyInput.value.trim();
     chrome.storage.local.set({ gemini_api_key: key }, () => {
-      showBanner("API Key saved! Processing prompt analytics...", false);
+      showBanner("API key saved locally. Refreshing your prompt audit…", false);
       loadAndAnalyze();
     });
   });
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const isDemoData = !prompts || prompts.length === 0;
 
       if (isDemoData) {
-        console.log("No scraped prompts found. Falling back to demonstration prompts.");
+        console.log("No collected prompts found. Falling back to demonstration prompts.");
         prompts = DEMO_PROMPTS;
       }
 
@@ -105,13 +105,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!apiKey) {
         showBanner(
           (isDemoData ? "Showing demonstration prompts. " : "") +
-          "Local telemetry only — the audit below is a SAMPLE, not a live result. Enter a Gemini API key for a real audit.",
+          "Local review only — the audit below is a sample, not a live result. Add a Gemini API key for personalized coaching.",
           false
         );
         renderAudit(SAMPLE_AI_RESPONSE, longestPrompt, true);
       } else {
         if (isDemoData) {
-          showBanner("No scraped prompts yet — auditing demonstration prompts.", false);
+          showBanner("No collected prompts yet — reviewing demonstration prompts.", false);
         } else {
           hideBanner();
         }
@@ -173,28 +173,74 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateTelemetryUI(metrics, prompts) {
     document.getElementById('stat-prompts-count').textContent = metrics.promptsCount;
     document.getElementById('stat-filler-count').textContent = metrics.fillerCount;
-    document.getElementById('stat-token-count').textContent = metrics.charCount;
+    document.getElementById('stat-token-count').textContent = metrics.charCount.toLocaleString();
     document.getElementById('stat-redundancy-count').textContent = metrics.redundancyCount;
+
+    const promptNoun = metrics.promptsCount === 1 ? 'prompt' : 'prompts';
+    const issueParts = [];
+    if (metrics.fillerCount > 0) {
+      issueParts.push(`${metrics.fillerCount} filler word${metrics.fillerCount === 1 ? '' : 's'}`);
+    }
+    if (metrics.redundancyCount > 0) {
+      issueParts.push(`${metrics.redundancyCount} repeated prompt${metrics.redundancyCount === 1 ? '' : 's'}`);
+    }
+    const issueSummary = issueParts.length
+      ? `${issueParts.join(' and ')} detected`
+      : 'No filler or repeated prompts were detected';
+    document.getElementById('telemetry-summary').textContent =
+      `Reviewed ${metrics.promptsCount} ${promptNoun} locally. ${issueSummary} across ` +
+      `${metrics.charCount.toLocaleString()} characters.`;
 
     // Waste that trimming would avoid: ~1 token per filler word, plus the
     // full token load of prompts that were near-duplicates of their
     // predecessor.
-    const savedTokens = metrics.fillerCount +
+    const totalTokens = Math.max(0, Math.round(metrics.charCount / core.APPROX_CHARS_PER_TOKEN));
+    const estimatedSavedTokens = metrics.fillerCount +
       Math.round(metrics.redundantChars / core.APPROX_CHARS_PER_TOKEN);
-    const energyKwh = core.energyRangeKwh(savedTokens);
-    const water = core.waterRangesL(energyKwh);
-    const energyWh = { low: energyKwh.low * 1000, high: energyKwh.high * 1000 };
+    const savedTokens = Math.min(totalTokens, estimatedSavedTokens);
+    const optimizedTokens = Math.max(0, totalTokens - savedTokens);
 
-    document.getElementById('sustain-water').textContent = core.formatRange(water.onsite, 'L');
-    document.getElementById('sustain-energy').textContent = core.formatRange(energyWh, 'Wh');
+    const toWh = (range) => ({ low: range.low * 1000, high: range.high * 1000 });
+    const savedEnergyWh = toWh(core.energyRangeKwh(savedTokens));
+    const currentEnergyWh = toWh(core.energyRangeKwh(totalTokens));
+    const optimizedEnergyWh = toWh(core.energyRangeKwh(optimizedTokens));
+    const savedWater = core.waterRangesL(core.energyRangeKwh(savedTokens));
+    const currentWater = core.waterRangesL(core.energyRangeKwh(totalTokens));
+    const optimizedWater = core.waterRangesL(core.energyRangeKwh(optimizedTokens));
 
-    const narrative =
-      `Trimming ${metrics.fillerCount} filler word(s) and ${metrics.redundancyCount} redundant ` +
-      `prompt(s) would avoid roughly ${savedTokens} tokens ≈ ${core.formatRange(energyWh, 'Wh')} of ` +
-      `energy and ${core.formatRange(water.onsite, 'L')} of on-site cooling water ` +
-      `(${core.formatRange(water.lifecycle, 'L')} lifecycle). Rough estimate from literature ranges — ` +
-      `see ASSUMPTIONS.md; these are not measured figures.`;
-    document.getElementById('sustain-narrative').textContent = narrative;
+    const percent = (value, maximum) => maximum > 0
+      ? Math.max(0, Math.min(100, (value / maximum) * 100))
+      : 0;
+
+    const renderRangeBar = (prefix, range, maximum, unit) => {
+      const lowPercent = percent(range.low, maximum);
+      const highPercent = percent(range.high, maximum);
+      document.getElementById(`${prefix}-low`).style.width = `${lowPercent}%`;
+      const highBar = document.getElementById(`${prefix}-high`);
+      highBar.style.left = `${lowPercent}%`;
+      highBar.style.width = `${Math.max(0, highPercent - lowPercent)}%`;
+      const formatted = core.formatRange(range, unit);
+      document.getElementById(`${prefix}-value`).textContent = formatted;
+      document.getElementById(`${prefix}-bar`).setAttribute('aria-label', formatted);
+    };
+
+    renderRangeBar('water-current', currentWater.onsite, currentWater.onsite.high, 'L');
+    renderRangeBar('water-optimized', optimizedWater.onsite, currentWater.onsite.high, 'L');
+    renderRangeBar('energy-current', currentEnergyWh, currentEnergyWh.high, 'Wh');
+    renderRangeBar('energy-optimized', optimizedEnergyWh, currentEnergyWh.high, 'Wh');
+
+    document.getElementById('water-axis-max').textContent = core.formatRange(
+      { low: currentWater.onsite.high, high: currentWater.onsite.high }, 'L'
+    ).split('–')[0] + ' L';
+    document.getElementById('energy-axis-max').textContent = core.formatRange(
+      { low: currentEnergyWh.high, high: currentEnergyWh.high }, 'Wh'
+    ).split('–')[0] + ' Wh';
+    document.getElementById('sustain-water').textContent = `Save ${core.formatRange(savedWater.onsite, 'L')}`;
+    document.getElementById('sustain-energy').textContent = `Save ${core.formatRange(savedEnergyWh, 'Wh')}`;
+    document.getElementById('sustain-narrative').textContent =
+      `Based on roughly ${savedTokens} potentially avoidable token(s). Lifecycle water savings: ` +
+      `${core.formatRange(savedWater.lifecycle, 'L')}. Literature-based low–high ranges — see ` +
+      `ASSUMPTIONS.md; these are not measured figures.`;
 
     // Populate prompts list accordion
     const listContainer = document.getElementById('prompts-list');
@@ -287,22 +333,22 @@ document.addEventListener('DOMContentLoaded', () => {
       scoreChart.destroy();
     }
 
-    let accentColor = '#10b981'; // Green
-    let trackColor = 'rgba(16, 185, 129, 0.1)';
-    let ratingBadge = 'Optimal Pro';
+    let accentColor = '#176b4d';
+    let trackColor = 'rgba(23, 107, 77, 0.12)';
+    let ratingBadge = 'Excellent habits';
 
     if (finalScore < 5.0) {
-      accentColor = '#f43f5e'; // Rose/Red
-      trackColor = 'rgba(244, 63, 94, 0.1)';
-      ratingBadge = 'Bloated Habit';
+      accentColor = '#a53b32';
+      trackColor = 'rgba(165, 59, 50, 0.1)';
+      ratingBadge = 'Needs focus';
     } else if (finalScore < 7.5) {
-      accentColor = '#f59e0b'; // Amber/Orange
-      trackColor = 'rgba(245, 158, 11, 0.1)';
-      ratingBadge = 'Sub-optimal';
+      accentColor = '#d9673f';
+      trackColor = 'rgba(217, 103, 63, 0.1)';
+      ratingBadge = 'Room to improve';
     } else if (finalScore < 9.0) {
-      accentColor = '#3b82f6'; // Blue
-      trackColor = 'rgba(59, 130, 246, 0.1)';
-      ratingBadge = 'Efficient';
+      accentColor = '#306b8c';
+      trackColor = 'rgba(48, 107, 140, 0.1)';
+      ratingBadge = 'Strong foundation';
     }
     if (isSample) ratingBadge += ' (sample)';
 
@@ -371,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       const li = document.createElement('li');
       li.className = 'feedback-placeholder';
-      li.textContent = 'Excellent prompting style! No negative habits detected.';
+      li.textContent = 'Your prompting habits look strong. No recurring issues were detected.';
       feedbackList.appendChild(li);
     }
   }

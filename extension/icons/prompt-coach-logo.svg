@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Prompt Coach Feedback Loop</title>
+  <desc id="desc">Two overlapping prompt bubbles with a coaching check mark</desc>
+  <rect x="8" y="8" width="112" height="112" rx="32" fill="#105239"/>
+  <path d="M29 32h53c9.4 0 17 7.6 17 17v5c0 9.4-7.6 17-17 17H57L40 84V71H29c-5.5 0-10-4.5-10-10V42c0-5.5 4.5-10 10-10Z" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M49 85h24l16 12V85h10c5.5 0 10-4.5 10-10V53" fill="none" stroke="#dff28e" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m43 52 9 9 19-22" fill="none" stroke="#ff7a45" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
