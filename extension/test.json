@@ -1,0 +1,12 @@
+{
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Hi can I download json file for this chat history?"
+    },
+    {
+      "role": "assistant",
+      "content": "..."
+    }
+  ]
+}
