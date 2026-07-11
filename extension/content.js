@@ -244,7 +244,7 @@
             <article class="card">
               <p class="label">IMPROVE A PROMPT</p>
               <h2>Review every change</h2>
-              <p>Focus a prompt field on an AI site to see the analyze bubble. tokenlean never submits it.</p>
+              <p>Select text in a prompt field to see the analyze bubble. tokenlean never submits it.</p>
               <button class="action soft" id="read" type="button">Read focused prompt</button>
               <textarea id="editor" placeholder="Focus a prompt field, or write a prompt here."></textarea>
               <button class="action soft" id="analyze" type="button">Analyze prompt</button>
@@ -368,15 +368,67 @@
   };
 
   const hideHint = () => {
+    clearTimeout(hintHideTimer);
     hint.classList.remove("show");
     hintTarget = null;
   };
 
-  const positionHint = (field) => {
-    const rect = field.getBoundingClientRect();
+  const fieldFromNode = (node) => {
+    if (!(node instanceof Node)) return null;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    if (!el) return null;
+    if (isEditable(el) && looksLikePromptField(el)) return el;
+    const closest = el.closest?.("textarea, input, [contenteditable], [role='textbox']");
+    if (closest && isEditable(closest) && looksLikePromptField(closest)) return closest;
+    return null;
+  };
+
+  const getFieldSelection = (field) => {
+    if (!field || !document.contains(field)) return { text: "", rect: null };
+    if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) {
+      const start = field.selectionStart ?? 0;
+      const end = field.selectionEnd ?? 0;
+      if (end <= start) return { text: "", rect: null };
+      return { text: field.value.slice(start, end), rect: field.getBoundingClientRect() };
+    }
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return { text: "", rect: null };
+    }
+    const range = selection.getRangeAt(0);
+    const anchorField = fieldFromNode(selection.anchorNode);
+    const focusField = fieldFromNode(selection.focusNode);
+    if (anchorField !== field && focusField !== field) return { text: "", rect: null };
+    if (!field.contains(range.commonAncestorContainer) && range.commonAncestorContainer !== field) {
+      return { text: "", rect: null };
+    }
+    const text = selection.toString().trim();
+    if (!text) return { text: "", rect: null };
+    const rects = range.getClientRects();
+    const rect = rects.length ? rects[0] : range.getBoundingClientRect();
+    return { text, rect: rect.width || rect.height ? rect : field.getBoundingClientRect() };
+  };
+
+  const findSelectedPromptField = () => {
+    const active = document.activeElement;
+    if (active && isEditable(active) && looksLikePromptField(active)) {
+      const selected = getFieldSelection(active);
+      if (selected.text) return { field: active, ...selected };
+    }
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.anchorNode) return null;
+    const field = fieldFromNode(selection.anchorNode) || fieldFromNode(selection.focusNode);
+    if (!field) return null;
+    const selected = getFieldSelection(field);
+    if (!selected.text) return null;
+    return { field, ...selected };
+  };
+
+  const positionHint = (field, selectionRect) => {
+    const rect = selectionRect || field.getBoundingClientRect();
     const bubbleWidth = hint.offsetWidth || 190;
     const bubbleHeight = hint.offsetHeight || 56;
-    let left = rect.left + Math.min(rect.width * 0.62, rect.width - 24) - bubbleWidth / 2;
+    let left = rect.left + rect.width / 2 - bubbleWidth / 2;
     let top = rect.top - bubbleHeight - 10;
     const below = top < 8;
     if (below) top = Math.min(innerHeight - bubbleHeight - 8, rect.bottom + 10);
@@ -386,33 +438,27 @@
     hint.style.top = top + "px";
   };
 
-  const showHintFor = (field) => {
-    if (host.hidden || !field || !looksLikePromptField(field)) {
+  let allowBubbleClick = false;
+
+  const syncHintToSelection = () => {
+    if (host.hidden || allowBubbleClick) return;
+    const selected = findSelectedPromptField();
+    if (!selected) {
       hideHint();
       return;
     }
-    hintTarget = field;
-    lastEditable = field;
-    if (!readEditable(field)) {
-      hint.classList.remove("show");
-      return;
-    }
-    const wasHidden = !hint.classList.contains("show");
-    if (wasHidden) hint.classList.remove("show");
-    positionHint(field);
+    hintTarget = selected.field;
+    lastEditable = selected.field;
+    positionHint(selected.field, selected.rect);
     requestAnimationFrame(() => {
-      positionHint(field);
+      const again = findSelectedPromptField();
+      if (!again || again.field !== selected.field) {
+        hideHint();
+        return;
+      }
+      positionHint(again.field, again.rect);
       hint.classList.add("show");
     });
-  };
-
-  const scheduleHideHint = () => {
-    clearTimeout(hintHideTimer);
-    hintHideTimer = setTimeout(() => {
-      const active = document.activeElement;
-      if (hintTarget && active && (active === hintTarget || hintTarget.contains?.(active))) return;
-      hideHint();
-    }, 180);
   };
 
   fab.addEventListener("click", () => {
@@ -422,13 +468,17 @@
 
   hint.addEventListener("pointerdown", (event) => {
     event.preventDefault();
+    allowBubbleClick = true;
     clearTimeout(hintHideTimer);
+    setTimeout(() => { allowBubbleClick = false; }, 400);
   });
   hint.onclick = (event) => {
     event.preventDefault();
     event.stopPropagation();
     const field = hintTarget && document.contains(hintTarget) ? hintTarget : lastEditable;
-    const text = readEditable(field);
+    const selected = field ? getFieldSelection(field) : { text: "" };
+    const text = selected.text || readEditable(field);
+    allowBubbleClick = false;
     hideHint();
     host.hidden = false;
     setOpen(true);
@@ -437,42 +487,51 @@
     runAnalysis(text);
   };
 
+  document.addEventListener("selectionchange", () => {
+    clearTimeout(hintHideTimer);
+    hintHideTimer = setTimeout(syncHintToSelection, 60);
+  });
+
   document.addEventListener(
-    "focusin",
+    "mouseup",
     (event) => {
+      if (event.button !== 0) return;
       clearTimeout(hintHideTimer);
-      if (host.hidden) return;
-      if (isEditable(event.target) && looksLikePromptField(event.target)) {
-        showHintFor(event.target);
+      hintHideTimer = setTimeout(syncHintToSelection, 30);
+    },
+    true,
+  );
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Escape") hideHint();
+      else if (hint.classList.contains("show")) {
+        clearTimeout(hintHideTimer);
+        hintHideTimer = setTimeout(syncHintToSelection, 30);
       }
     },
     true,
   );
 
   document.addEventListener(
-    "focusout",
+    "pointerdown",
     (event) => {
-      if (!hintTarget) return;
-      if (event.target === hintTarget || hintTarget.contains?.(event.target)) {
-        scheduleHideHint();
-      }
-    },
-    true,
-  );
-
-  document.addEventListener(
-    "input",
-    (event) => {
-      if (host.hidden || !hintTarget) return;
-      if (event.target === hintTarget || hintTarget.contains?.(event.target)) {
-        showHintFor(hintTarget);
-      }
+      if (!hint.classList.contains("show")) return;
+      const path = event.composedPath?.() || [];
+      if (path.includes(hint)) return;
+      // Let the browser update selection first; syncHintToSelection will dismiss if cleared.
+      clearTimeout(hintHideTimer);
+      hintHideTimer = setTimeout(syncHintToSelection, 40);
     },
     true,
   );
 
   document.addEventListener("scroll", () => {
-    if (hintTarget && hint.classList.contains("show")) positionHint(hintTarget);
+    if (!hint.classList.contains("show") || !hintTarget) return;
+    const selected = getFieldSelection(hintTarget);
+    if (!selected.text) hideHint();
+    else positionHint(hintTarget, selected.rect);
   }, true);
 
   root.querySelectorAll("[data-tab]").forEach((tab) => {
