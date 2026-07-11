@@ -1,10 +1,10 @@
 /**
- * LLMGuide shared core — the single source of truth for analysis logic used
+ * PromptCoach shared core — the single source of truth for analysis logic used
  * by BOTH frontends:
  *
  *   - the CLI/hook (imports this module directly via TypeScript), and
  *   - the browser extension (consumes the generated bundle at
- *     extension/lib/llmguide-core.js, built by scripts/build-extension-core.cjs).
+ *     extension/lib/promptcoach-core.js, built by scripts/build-extension-core.cjs).
  *
  * Rules for this file:
  *   - No imports. It must transpile to a standalone script for the extension.
@@ -76,7 +76,7 @@ export interface PromptAnalysis {
  * Local, deterministic prompt-structure check. Philosophy matches the hosted
  * coach rubric (src/hook/llm.ts): brevity is never penalized in the score,
  * and "oversized paste" means the same thing it means everywhere else in
- * LLMGuide (OVERSIZED_PASTE_CHARS + code content), not an ad-hoc limit.
+ * PromptCoach (OVERSIZED_PASTE_CHARS + code content), not an ad-hoc limit.
  */
 export function analyzePromptText(raw: string): PromptAnalysis {
   const text = raw.trim();
@@ -200,21 +200,27 @@ export interface Range {
 /** Energy per million uncached tokens processed (input + output). */
 export const ENERGY_KWH_PER_MTOK: BoundedConstant = {
   low: 0.3,
-  high: 1.0,
+  high: 2.0,
   unit: 'kWh per 1M uncached tokens',
-  source: 'https://epoch.ai/gradient-updates/how-much-energy-does-chatgpt-use',
+  source: 'https://arxiv.org/abs/2509.20241',
   note:
-    'Literature range for frontier-model inference (Epoch AI 2025; Luccioni et al. 2023, ' +
-    'https://arxiv.org/abs/2311.16863). No first-party figures exist for Claude.',
+    '2026 literature range. Low: optimized production serving of input-heavy mixes ' +
+    '(Oviedo et al., Joule 2026 — median 0.31 Wh/query, IQR 0.16–0.60; finds earlier ' +
+    'public estimates overstated 4–20x). High: output-token-dominated bound (~1.95 ' +
+    'kWh/MTok output, Epoch-derived Claude Code figures, Couch 2026). No first-party ' +
+    'figures exist for Claude as of mid-2026.',
 };
 
 /** On-site (scope-1) water use per kWh of datacenter energy. */
 export const WATER_L_PER_KWH_ONSITE: BoundedConstant = {
-  low: 1.1,
-  high: 1.1,
+  low: 0.4,
+  high: 4.3,
   unit: 'L per kWh (on-site cooling)',
   source: 'https://arxiv.org/abs/2304.03271',
-  note: 'Li et al., "Making AI Less Thirsty" — typical on-site WUE.',
+  note:
+    '2026 regional WUE spread: ~0.4 L/kWh in cool regions (Iceland, PNW, Scandinavia) ' +
+    'to ~4.3 L/kWh in hot regions (Phoenix, Singapore, Texas); global average ~1.8. ' +
+    'Baseline methodology: Li et al., "Making AI Less Thirsty".',
 };
 
 /** Lifecycle water (on-site + electricity generation) per kWh. */
@@ -228,8 +234,10 @@ export const WATER_L_PER_KWH_LIFECYCLE: BoundedConstant = {
 
 /**
  * Weight applied to cache-read tokens relative to uncached tokens.
- * Assumption, not a measurement: cached prefixes skip prefill compute,
- * so we count them at 10%. Flagged in every report.
+ * Cached prefixes skip prefill compute, so we count them at 10%. The 2026
+ * Epoch-derived Claude Code per-token figures (cache read ~39 Wh/MTok vs
+ * input ~390 Wh/MTok) land on exactly this ratio, but it remains an
+ * estimate, not a first-party measurement. Flagged in every report.
  */
 export const CACHED_READ_WEIGHT = 0.1;
 

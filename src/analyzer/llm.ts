@@ -51,13 +51,13 @@ const PRIVACY_NOTICE = [
   '----------------------------------------------------------------------',
   'PRIVACY NOTICE (shown once, before the first LLM analysis)',
   '',
-  'LLMGuide is about to send condensed transcripts of your Claude Code',
+  'PromptCoach is about to send condensed transcripts of your Claude Code',
   'sessions to the Anthropic API for analysis. Transcripts are sent AS-IS:',
   'any code, file paths, and prompt text they contain are included.',
   'Nothing is redacted. Automatic redaction is a planned v2 feature (see',
-  'the LLMGuide issue tracker).',
+  'the PromptCoach issue tracker).',
   '',
-  'To opt out, run `llmguide analyze --sample 0` or unset',
+  'To opt out, run `promptcoach analyze --sample 0` or unset',
   'ANTHROPIC_API_KEY. Heuristic analysis stays fully local either way.',
   '----------------------------------------------------------------------',
 ].join('\n');
@@ -128,7 +128,7 @@ const noop: Log = () => {};
 function anthropicClient(): Anthropic {
   return new Anthropic({
     apiKey: anthropicApiKey() || undefined,
-    baseURL: (process.env.LLMGUIDE_LLM_BASE_URL || process.env.TOKENLEAN_LLM_BASE_URL)
+    baseURL: (process.env.PROMPTCOACH_LLM_BASE_URL || process.env.TOKENLEAN_LLM_BASE_URL)
       ?.replace(/\/+$/, ''),
   });
 }
@@ -412,10 +412,10 @@ export async function submitLlmBatch(
     const collected = await collectLlmResults(db, { wait: true, log });
     message +=
       collected.stillPending > 0
-        ? ` Batch still processing after the wait cap — run \`llmguide report\` later to collect results.`
+        ? ` Batch still processing after the wait cap — run \`promptcoach report\` later to collect results.`
         : ` Collected ${collected.findingsAdded} finding(s) from ${collected.batchesCompleted} completed batch(es).`;
   } else {
-    message += ' Results are collected by `llmguide report` or `llmguide analyze --wait`.';
+    message += ' Results are collected by `promptcoach report` or `promptcoach analyze --wait`.';
   }
 
   return {
@@ -555,7 +555,7 @@ async function collectEndedBatch(
     }
   }
 
-  // Self-accounting (SPEC §1/§4.4): every token LLMGuide spends is recorded.
+  // Self-accounting (SPEC §1/§4.4): every token PromptCoach spends is recorded.
   if (inputTokens > 0 || outputTokens > 0) {
     const usd =
       (inputTokens / 1e6) * BATCH_USD_PER_MTOK_INPUT +

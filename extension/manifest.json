@@ -46,7 +46,7 @@
         "https://copilot.microsoft.com/*",
         "https://chat.deepseek.com/*"
       ],
-      "js": ["lib/llmguide-core.js", "content.js"],
+      "js": ["lib/promptcoach-core.js", "content.js"],
       "run_at": "document_idle"
     }
   ],

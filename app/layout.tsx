@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LLMGuide — Better sessions with Claude Code and Codex",
+  title: "PromptCoach — Better sessions with Claude Code and Codex",
   description: "Measure prompt waste, understand rework, and build leaner Claude Code habits.",
   icons: {
     icon: "/favicon.svg",

@@ -1,13 +1,13 @@
-# Running llmguide with Claude CLI
+# Running promptcoach with Claude CLI
 
-llmguide runs from your normal terminal alongside Claude Code. It is not a
+promptcoach runs from your normal terminal alongside Claude Code. It is not a
 command entered inside Claude's chat.
 
 It uses the local transcripts created by Claude Code and does not require an
 Anthropic developer API key, replace subscription authentication, or create
 separate API charges.
 
-## 1. Build and install llmguide locally
+## 1. Build and install promptcoach locally
 
 ```bash
 cd /Users/guangsizeng/Documents/myCode/csesoc_flagship_hackathon
@@ -16,11 +16,11 @@ npm run build
 npm link
 ```
 
-Confirm that llmguide is available:
+Confirm that promptcoach is available:
 
 ```bash
-llmguide --help
-llmguide status
+promptcoach --help
+promptcoach status
 ```
 
 ## 2. Use Claude CLI normally
@@ -38,7 +38,7 @@ session transcripts under:
 ~/.claude/projects/
 ```
 
-llmguide reads these files locally. It does not change Claude authentication
+promptcoach reads these files locally. It does not change Claude authentication
 or route Claude traffic through a proxy.
 
 ## 3. Analyze your Claude Code sessions
@@ -46,16 +46,16 @@ or route Claude traffic through a proxy.
 Exit Claude Code or open another terminal, then run:
 
 ```bash
-llmguide analyze
-llmguide report
+promptcoach analyze
+promptcoach report
 ```
 
 Useful report variants:
 
 ```bash
-llmguide report --since 7d
-llmguide report --json
-llmguide report --write-claude-md
+promptcoach report --since 7d
+promptcoach report --json
+promptcoach report --write-claude-md
 ```
 
 `--write-claude-md` creates a `CLAUDE.md.suggested` file. It never edits
@@ -66,8 +66,8 @@ your real `CLAUDE.md` directly.
 Install the local Claude Code prompt hook:
 
 ```bash
-llmguide hooks install
-llmguide status
+promptcoach hooks install
+promptcoach status
 ```
 
 Restart Claude Code after installing the hook:
@@ -83,8 +83,8 @@ submits your prompt. It also makes no model or network calls.
 Manage coaching with:
 
 ```bash
-llmguide hooks mute 3
-llmguide hooks uninstall
+promptcoach hooks mute 3
+promptcoach hooks uninstall
 ```
 
 ## Typical workflow
@@ -94,11 +94,11 @@ llmguide hooks uninstall
 claude
 
 # After the session, analyze recent usage.
-llmguide analyze
-llmguide report --since 7d
+promptcoach analyze
+promptcoach report --since 7d
 ```
 
-## If the llmguide command is not found
+## If the promptcoach command is not found
 
 Run the compiled CLI directly:
 

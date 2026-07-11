@@ -107,8 +107,8 @@ describe('shared core: transcript prompt extraction', () => {
 describe('generated extension bundle', () => {
   it('exposes the same constants and behavior as the TypeScript source', () => {
     const require = createRequire(import.meta.url);
-    require('../extension/lib/llmguide-core.js');
-    const bundled = (globalThis as Record<string, any>).LLMGuideCore;
+    require('../extension/lib/promptcoach-core.js');
+    const bundled = (globalThis as Record<string, any>).PromptCoachCore;
     expect(bundled).toBeDefined();
 
     expect(bundled.OVERSIZED_PASTE_CHARS).toBe(core.OVERSIZED_PASTE_CHARS);

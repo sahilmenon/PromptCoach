@@ -29,11 +29,11 @@ function readStoredCredentials(): StoredCredentials {
 }
 
 export function credentialsPath(): string {
-  const explicitHome = process.env.LLMGUIDE_HOME || process.env.TOKENLEAN_HOME;
-  const current = path.join(os.homedir(), '.llmguide');
+  const explicitHome = process.env.PROMPTCOACH_HOME || process.env.TOKENLEAN_HOME;
+  const current = path.join(os.homedir(), '.promptcoach');
   const legacy = path.join(os.homedir(), '.tokenlean');
   const home = explicitHome || (!fs.existsSync(current) && fs.existsSync(legacy) ? legacy : current);
-  return process.env.LLMGUIDE_CREDENTIALS || process.env.TOKENLEAN_CREDENTIALS ||
+  return process.env.PROMPTCOACH_CREDENTIALS || process.env.TOKENLEAN_CREDENTIALS ||
     path.join(home, 'credentials.json');
 }
 
@@ -54,7 +54,7 @@ export function storedLlmProvider(): LlmProvider | null {
 /** Environment variables override the persistent key for CI and temporary use. */
 export function anthropicApiKey(): string | null {
   return process.env.ANTHROPIC_API_KEY ||
-    process.env.LLMGUIDE_LLM_API_KEY ||
+    process.env.PROMPTCOACH_LLM_API_KEY ||
     process.env.TOKENLEAN_LLM_API_KEY ||
     storedAnthropicApiKey();
 }

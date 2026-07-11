@@ -19,7 +19,7 @@ let tmpDir: string;
 let db: DB;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-env-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptcoach-env-'));
   db = openDb(path.join(tmpDir, 'db.sqlite'));
 });
 
@@ -74,9 +74,9 @@ describe('estimateEnvironment without a baseline', () => {
     expect(env.energyKwh).toBeNull();
     expect(env.waterOnsiteL).toBeNull();
     expect(env.waterLifecycleL).toBeNull();
-    // 1 MTok x [0.3, 1.0] kWh/MTok
+    // 1 MTok x [0.3, 2.0] kWh/MTok
     expect(env.windowFootprintKwh.low).toBe(0.3);
-    expect(env.windowFootprintKwh.high).toBe(1.0);
+    expect(env.windowFootprintKwh.high).toBe(2.0);
     expect(env.notes).toContain(ESTIMATE_LABEL);
     expect(env.notes).toContain('baseline not recorded yet — savings appear after week 1');
     expect(env.notes.some((n) => n.includes('10%'))).toBe(true);
@@ -87,7 +87,7 @@ describe('estimateEnvironment without a baseline', () => {
     seedTurn('s1', 0, { cacheRead: 1_000_000 }); // eff ~= 100k
     const env = estimateEnvironment(db);
     expect(env.windowFootprintKwh.low).toBeCloseTo(0.1 * 0.3, 10); // 0.03
-    expect(env.windowFootprintKwh.high).toBeCloseTo(0.1 * 1.0, 10); // 0.1
+    expect(env.windowFootprintKwh.high).toBeCloseTo(0.1 * 2.0, 10); // 0.2
   });
 });
 
@@ -104,18 +104,18 @@ describe('estimateEnvironment with a baseline', () => {
     const env = estimateEnvironment(db);
     // savedEff = max(0, 1,000,000 - 500,000) x 2 sessions = 1,000,000
     expect(env.effectiveTokensSaved).toBe(1_000_000);
-    // energy: 1 MTok x [0.3, 1.0]
+    // energy: 1 MTok x [0.3, 2.0]
     expect(env.energyKwh!.low).toBe(0.3);
-    expect(env.energyKwh!.high).toBe(1.0);
-    // on-site water: energy x 1.1
-    expect(env.waterOnsiteL!.low).toBeCloseTo(0.33, 10);
-    expect(env.waterOnsiteL!.high).toBeCloseTo(1.1, 10);
+    expect(env.energyKwh!.high).toBe(2.0);
+    // on-site water: energy x [0.4, 4.3]
+    expect(env.waterOnsiteL!.low).toBeCloseTo(0.12, 10);
+    expect(env.waterOnsiteL!.high).toBeCloseTo(8.6, 10);
     // lifecycle water: low x 1.8, high x 12
     expect(env.waterLifecycleL!.low).toBeCloseTo(0.54, 10);
-    expect(env.waterLifecycleL!.high).toBeCloseTo(12.0, 10);
+    expect(env.waterLifecycleL!.high).toBeCloseTo(24.0, 10);
     // footprint of the window itself: 1 MTok total
     expect(env.windowFootprintKwh.low).toBe(0.3);
-    expect(env.windowFootprintKwh.high).toBe(1.0);
+    expect(env.windowFootprintKwh.high).toBe(2.0);
   });
 
   it('clamps savings at zero when current usage exceeds the baseline', () => {
@@ -128,7 +128,7 @@ describe('estimateEnvironment with a baseline', () => {
     expect(env.energyKwh).toEqual({ low: 0, high: 0 });
     expect(env.waterOnsiteL).toEqual({ low: 0, high: 0 });
     // footprint is still reported for the window usage
-    expect(env.windowFootprintKwh.high).toBe(1.0);
+    expect(env.windowFootprintKwh.high).toBe(2.0);
   });
 
   it('applies the sinceDays window to both footprint and savings', () => {
@@ -139,13 +139,13 @@ describe('estimateEnvironment with a baseline', () => {
     seedTurn('ancient', 0, { input: 9_000_000, output: 1_000_000 }); // excluded
 
     const env = estimateEnvironment(db, { sinceDays: 7 });
-    // window: 1 session, eff 500k -> footprint 0.5 MTok x [0.3, 1.0]
+    // window: 1 session, eff 500k -> footprint 0.5 MTok x [0.3, 2.0]
     expect(env.windowFootprintKwh.low).toBeCloseTo(0.15, 10);
-    expect(env.windowFootprintKwh.high).toBeCloseTo(0.5, 10);
+    expect(env.windowFootprintKwh.high).toBeCloseTo(1.0, 10);
     // savedEff = (1,000,000 - 500,000) x 1
     expect(env.effectiveTokensSaved).toBe(500_000);
     expect(env.energyKwh!.low).toBeCloseTo(0.15, 10);
-    expect(env.energyKwh!.high).toBeCloseTo(0.5, 10);
+    expect(env.energyKwh!.high).toBeCloseTo(1.0, 10);
   });
 
   it('returns zero savings (not null) for an empty window', () => {
@@ -200,7 +200,7 @@ describe('estimateWasteLedger', () => {
     const ledger = estimateWasteLedger(db, null);
     expect(ledger.totalEffTokens).toEqual({ low: 2_000, high: 8_000 });
     expect(ledger.energyKwh.low).toBeCloseTo((2_000 / 1e6) * 0.3, 12);
-    expect(ledger.energyKwh.high).toBeCloseTo((8_000 / 1e6) * 1.0, 12);
+    expect(ledger.energyKwh.high).toBeCloseTo((8_000 / 1e6) * 2.0, 12);
   });
 
   it('scales cost with session length and caps persistence at 30 turns', () => {

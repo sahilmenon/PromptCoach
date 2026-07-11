@@ -1,6 +1,6 @@
 # Contributing
 
-LLMGuide is a Node 20+ prompt-efficiency companion for Claude Code and Codex.
+PromptCoach is a Node 20+ prompt-efficiency companion for Claude Code and Codex.
 
 ```text
 npm install

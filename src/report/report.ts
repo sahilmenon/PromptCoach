@@ -16,7 +16,7 @@ import {
 import { buildClaudeMdDiffs, type ClaudeMdDiff } from './claudeMdDiff';
 
 /**
- * Report data (SPEC §4.5). `llmguide report --json` dumps this verbatim,
+ * Report data (SPEC §4.5). `promptcoach report --json` dumps this verbatim,
  * so every field is plain JSON (numbers, strings, nulls, arrays).
  */
 
@@ -75,7 +75,7 @@ export interface SelfSpendReport {
   inputTokens: number;
   outputTokens: number;
   usd: number;
-  /** Input + output over all turns, all time (the usage LLMGuide analyzed). */
+  /** Input + output over all turns, all time (the usage PromptCoach analyzed). */
   analyzedTokens: number;
   /** (self input+output) / analyzedTokens as a percentage; null when 0/0. */
   overheadPct: number | null;
@@ -312,7 +312,7 @@ export function renderReport(data: ReportData): string {
   const windowLabel =
     data.sinceDays === null ? 'all time' : `last ${data.sinceDays} day(s)`;
   lines.push(
-    `LLMGuide report — generated ${new Date(data.generatedAt).toISOString()} — window: ${windowLabel}`
+    `PromptCoach report — generated ${new Date(data.generatedAt).toISOString()} — window: ${windowLabel}`
   );
   lines.push('='.repeat(WIDTH));
 
@@ -392,7 +392,7 @@ function renderFindings(lines: string[], groups: FindingGroup[]): void {
   lines.push('');
   lines.push('TOP FINDINGS');
   if (groups.length === 0) {
-    lines.push('  none yet — run `llmguide analyze` after a few sessions.');
+    lines.push('  none yet — run `promptcoach analyze` after a few sessions.');
     return;
   }
   for (const group of groups) {
@@ -470,7 +470,7 @@ function renderClaudeMd(lines: string[], diffs: ClaudeMdDiff[]): void {
     lines.push('');
   }
   lines.push(
-    '  note: `llmguide report --write-claude-md` writes these to CLAUDE.md.suggested'
+    '  note: `promptcoach report --write-claude-md` writes these to CLAUDE.md.suggested'
   );
   lines.push('  beside each project — CLAUDE.md itself is never modified.');
 }
@@ -506,7 +506,7 @@ function renderSelfSpend(lines: string[], spend: SelfSpendReport): void {
       ? 'overhead n/a (no analyzed usage yet)'
       : `${spend.overheadPct.toFixed(1)}% overhead`;
   lines.push(
-    `  LLMGuide spent ${fmtTokens(selfTokens)} tokens ≈ $${spend.usd.toFixed(2)} ` +
+    `  PromptCoach spent ${fmtTokens(selfTokens)} tokens ≈ $${spend.usd.toFixed(2)} ` +
       `analyzing ${fmtTokens(spend.analyzedTokens)} tokens — ${overhead}`
   );
 }

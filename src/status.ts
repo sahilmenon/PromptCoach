@@ -2,15 +2,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { claudeSettingsPath, codexHooksPath, dbPath, defaultClaudeDir, hookLlmConfig } from './config';
 import { metaGet, openDb } from './db';
-import { getHookBypass, hasLlmGuideHook } from './hook/install';
-import { hasCodexLlmGuideHook } from './hook/codexInstall';
+import { getHookBypass, hasPromptCoachHook } from './hook/install';
+import { hasCodexPromptCoachHook } from './hook/codexInstall';
 import { storedApiKey } from './credentials';
 
 type Level = 'OK' | 'WARN' | 'FAIL' | '--';
 const line = (level: Level, text: string): string => level.padEnd(4) + ' ' + text;
 
 export async function runStatus(): Promise<string> {
-  const out = [line('--', 'llmguide status'), line('--', '[claude subscription layer]')];
+  const out = [line('--', 'promptcoach status'), line('--', '[claude subscription layer]')];
   const projects = path.join(defaultClaudeDir(), 'projects');
   out.push(fs.existsSync(projects)
     ? line('OK', 'local Claude Code transcripts found: ' + projects)
@@ -26,9 +26,9 @@ export async function runStatus(): Promise<string> {
       ? line('WARN', 'Claude Code settings are not valid JSON: ' + settingsPath)
       : line('--', 'Claude Code settings not found yet: ' + settingsPath));
   }
-  const installed = hasLlmGuideHook(settings);
+  const installed = hasPromptCoachHook(settings);
   out.push(installed ? line('OK', 'UserPromptSubmit coaching hook installed')
-    : line('--', 'coaching hook not installed (run llmguide hooks install)'));
+    : line('--', 'coaching hook not installed (run promptcoach hooks install)'));
 
   out.push(line('--', '[codex cli]'));
   const codexPath = codexHooksPath();
@@ -41,20 +41,20 @@ export async function runStatus(): Promise<string> {
       ? line('WARN', 'Codex hooks are not valid JSON: ' + codexPath)
       : line('--', 'Codex hooks not found yet: ' + codexPath));
   }
-  out.push(hasCodexLlmGuideHook(codexConfig)
+  out.push(hasCodexPromptCoachHook(codexConfig)
     ? line('OK', 'Codex UserPromptSubmit coaching hook installed')
-    : line('--', 'Codex coaching hook not installed (run llmguide hooks install codex)'));
+    : line('--', 'Codex coaching hook not installed (run promptcoach hooks install codex)'));
 
   const llm = hookLlmConfig();
   out.push(llm
     ? line('OK', `hosted prompt review configured: ${llm.model} via ${llm.provider}` +
         (llm.provider !== 'cursor' && storedApiKey(llm.provider) ? ' (saved key)' : ''))
-    : line('WARN', 'hosted prompt review needs a key in .env, `llmguide config set-key`, or GEMINI/ANTHROPIC/OPENAI/CURSOR_API_KEY'));
+    : line('WARN', 'hosted prompt review needs a key in .env, `promptcoach config set-key`, or GEMINI/ANTHROPIC/OPENAI/CURSOR_API_KEY'));
 
   out.push(line('--', '[local analysis]'));
   const file = dbPath();
   if (!fs.existsSync(file)) {
-    out.push(line('--', 'database not created yet (run llmguide analyze)'));
+    out.push(line('--', 'database not created yet (run promptcoach analyze)'));
     return out.join('\n');
   }
   try {

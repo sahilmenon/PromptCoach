@@ -1,10 +1,10 @@
 {
-  "name": "llmguide",
+  "name": "promptcoach",
   "version": "0.1.0",
   "description": "Prompt-efficiency coach for Claude Code and Codex CLI",
   "license": "MIT",
   "bin": {
-    "llmguide": "bin/llmguide.js"
+    "promptcoach": "bin/promptcoach.js"
   },
   "main": "dist/cli.js",
   "repository": {

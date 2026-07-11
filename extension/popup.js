@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
-  // Shared analysis logic from lib/llmguide-core.js (generated from
+  // Shared analysis logic from lib/promptcoach-core.js (generated from
   // src/shared/core.ts — the same functions the CLI uses).
-  const { analyzePromptText, structurePrompt, collectPrompts } = globalThis.LLMGuideCore;
+  const { analyzePromptText, structurePrompt, collectPrompts } = globalThis.PromptCoachCore;
 
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
@@ -33,11 +33,11 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (activeTabs) => {
       const tabId = activeTabs[0]?.id;
       if (!tabId) return;
-      chrome.tabs.sendMessage(tabId, { type: 'LLMGUIDE_TOGGLE' }, () => {
+      chrome.tabs.sendMessage(tabId, { type: 'PROMPTCOACH_TOGGLE' }, () => {
         if (chrome.runtime.lastError) {
           chrome.scripting.executeScript({
             target: { tabId },
-            files: ['lib/llmguide-core.js', 'content.js'],
+            files: ['lib/promptcoach-core.js', 'content.js'],
           }, () => {
             if (chrome.runtime.lastError) {
               promptStatus.textContent = 'Widget is only available on supported AI sites.';
@@ -193,6 +193,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     importStatus.textContent = "Opening audit dashboard…";
-    await chrome.storage.local.set({ recentPrompts: importedPrompts });
+    await chrome.storage.local.set({ recentPrompts: importedPrompts, recentPromptsAt: Date.now() });
   };
 });

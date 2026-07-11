@@ -33,10 +33,10 @@
   const logoUrl = chrome.runtime.getURL("icons/icon32.png");
   const launcherLogoUrl = chrome.runtime.getURL("icons/prompt-coach-launcher.svg");
 
-  // Shared analysis logic from extension/lib/llmguide-core.js (generated from
+  // Shared analysis logic from extension/lib/promptcoach-core.js (generated from
   // src/shared/core.ts — the same functions the CLI uses). The manifest and
   // background.js both inject the lib before this file.
-  const { analyzePromptText, structurePrompt, collectPrompts } = globalThis.LLMGuideCore;
+  const { analyzePromptText, structurePrompt, collectPrompts } = globalThis.PromptCoachCore;
 
   // User prompts extracted from the most recent widget import, held for Re-evaluate.
   let importedPrompts = [];
@@ -1251,13 +1251,13 @@
     if (!provider) {
       promptStatus.textContent = info.online
         ? "No API key configured for the bridge."
-        : "Start the local bridge first: llmguide extension serve";
+        : "Start the local bridge first: promptcoach extension serve";
     }
 
     if (!info.online || !info.configured || !provider) {
       const hint = !info.online
-        ? "Start the local bridge first: llmguide extension serve"
-        : "No API key configured. Add GEMINI_API_KEY to .env, then run: llmguide extension serve";
+        ? "Start the local bridge first: promptcoach extension serve"
+        : "No API key configured. Add GEMINI_API_KEY to .env, then run: promptcoach extension serve";
       await showPipeline(
         [
           info.online ? "Connected to local bridge" : "Could not reach local bridge",
@@ -1324,9 +1324,9 @@
 
     if (!response?.ok || !response.review) {
       const hint = response?.error === "not_configured"
-        ? "No API key configured. Add GEMINI_API_KEY to .env, then run: llmguide extension serve"
+        ? "No API key configured. Add GEMINI_API_KEY to .env, then run: promptcoach extension serve"
         : response?.error === "bridge_unreachable"
-          ? "Start the local bridge first: llmguide extension serve"
+          ? "Start the local bridge first: promptcoach extension serve"
           : "Model review unavailable. Check the local bridge and API key, then try again.";
       if (!(await renderCurrentStage(
         { label: `Review failed via ${providerLabel(usedProvider)}`, state: "fail" },
@@ -1821,11 +1821,11 @@
   }, true);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "TOKENLEAN_PING" || message?.type === "LLMGUIDE_PING") {
+    if (message?.type === "TOKENLEAN_PING" || message?.type === "PROMPTCOACH_PING") {
       sendResponse({ ok: true });
       return false;
     }
-    if (message?.type === "TOKENLEAN_TOGGLE" || message?.type === "LLMGUIDE_TOGGLE") {
+    if (message?.type === "TOKENLEAN_TOGGLE" || message?.type === "PROMPTCOACH_TOGGLE") {
       host.hidden = !host.hidden;
       sendResponse({ ok: true, hidden: host.hidden, success: true });
       return false;
@@ -1865,7 +1865,7 @@
         sendResponse({ success: false, error: "No prompts found on the page yet." });
         return false;
       }
-      void setLocalStorage({ recentPrompts: prompts.slice(-10) })
+      void setLocalStorage({ recentPrompts: prompts.slice(-10), recentPromptsAt: Date.now() })
         .then(() => sendResponse({ success: true }))
         .catch((error) => sendResponse({ success: false, error: error.message }));
       return true;
@@ -1918,10 +1918,10 @@
       return;
     }
     const recentPrompts = prompts.slice(-10);
-    // Storing recentPrompts triggers the background storage listener, which
-    // opens the dashboard — the single open path shared with popup Import.
+    // Storing recentPrompts with a fresh timestamp triggers the background
+    // listener even when the prompt array matches the previous harvest.
     try {
-      await setLocalStorage({ recentPrompts });
+      await setLocalStorage({ recentPrompts, recentPromptsAt: Date.now() });
       if (inspectStatus) inspectStatus.textContent = "Opening dashboard…";
     } catch (error) {
       if (inspectStatus) inspectStatus.textContent = error.message;
@@ -1982,7 +1982,7 @@
     }
     importStatus.textContent = "Opening audit dashboard…";
     try {
-      await setLocalStorage({ recentPrompts: importedPrompts });
+      await setLocalStorage({ recentPrompts: importedPrompts, recentPromptsAt: Date.now() });
     } catch (error) {
       importStatus.textContent = error.message;
     }

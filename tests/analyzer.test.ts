@@ -9,7 +9,7 @@ import { recordBaselineIfReady, runHeuristics } from '../src/analyzer/heuristics
 let dir: string;
 let db: DB;
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llmguide-analyzer-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptcoach-analyzer-'));
   db = openDb(path.join(dir, 'db.sqlite'));
 });
 afterEach(() => {
