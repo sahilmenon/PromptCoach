@@ -1,0 +1,173 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { openDb, type DB } from '../src/db';
+import {
+  buildClaudeMdDiffs,
+  normalizeClaudeMdLine,
+  sanitizeProjectName,
+  writeClaudeMdSuggestions,
+} from '../src/report/claudeMdDiff';
+
+const NOW = Date.now();
+
+let tmpDir: string;
+let db: DB;
+let savedHome: string | undefined;
+
+beforeEach(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenlean-claudemd-'));
+  db = openDb(path.join(tmpDir, 'db.sqlite'));
+  savedHome = process.env.TOKENLEAN_HOME;
+  process.env.TOKENLEAN_HOME = path.join(tmpDir, 'home');
+});
+
+afterEach(() => {
+  db.close();
+  if (savedHome === undefined) delete process.env.TOKENLEAN_HOME;
+  else process.env.TOKENLEAN_HOME = savedHome;
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+function seedSession(id: string, project: string): void {
+  db.prepare(
+    `INSERT INTO sessions (id, project, started_at, ended_at, model, turn_count, abandoned, waste_score)
+     VALUES (?, ?, ?, ?, 'claude-sonnet-4-6', 0, 0, 0)`
+  ).run(id, project, NOW, NOW + 1_000);
+}
+
+function seedFinding(sessionId: string, category: string, claudeMdLine: string | null): void {
+  db.prepare(
+    `INSERT INTO findings (session_id, category, confidence, evidence, suggestion, created_at, source, claude_md_line)
+     VALUES (?, ?, 0.8, 'evidence', 'suggestion', ?, 'llm', ?)`
+  ).run(sessionId, category, NOW, claudeMdLine);
+}
+
+describe('buildClaudeMdDiffs', () => {
+  it('dedupes lines case/whitespace-insensitively and normalizes the bullet', () => {
+    seedSession('s1', '/tmp/projA');
+    seedFinding('s1', 'missing_convention', '- Tests use vitest; never suggest jest');
+    seedFinding('s1', 'resupplied_context', '-   Tests   USE vitest;  never suggest JEST');
+    seedFinding('s1', 'missing_convention', 'Use pnpm not npm'); // no bullet -> added
+
+    const diffs = buildClaudeMdDiffs(db);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].project).toBe('/tmp/projA');
+    expect(diffs[0].lines).toEqual([
+      '- Tests use vitest; never suggest jest',
+      '- Use pnpm not npm',
+    ]);
+  });
+
+  it('only includes missing_convention and resupplied_context findings', () => {
+    seedSession('s1', '/tmp/projA');
+    seedFinding('s1', 'vague_opening', '- Should never appear');
+    seedFinding('s1', 'rework_loop', '- Neither should this');
+    seedFinding('s1', 'missing_convention', null); // no line -> nothing
+    expect(buildClaudeMdDiffs(db)).toEqual([]);
+  });
+
+  it('produces the exact unified-diff block format', () => {
+    seedSession('s1', '/tmp/projA');
+    seedFinding('s1', 'missing_convention', '- Tests use vitest; never suggest jest');
+    const [diff] = buildClaudeMdDiffs(db);
+    expect(diff.diff).toBe(
+      [
+        '--- a/CLAUDE.md',
+        '+++ b/CLAUDE.md',
+        '@@ proposed by tokenlean @@',
+        '+- Tests use vitest; never suggest jest',
+      ].join('\n')
+    );
+  });
+
+  it('groups by project, sorted by project path', () => {
+    seedSession('s1', '/tmp/zeta');
+    seedSession('s2', '/tmp/alpha');
+    seedFinding('s1', 'missing_convention', '- Line for zeta');
+    seedFinding('s2', 'resupplied_context', '- Line for alpha');
+
+    const diffs = buildClaudeMdDiffs(db);
+    expect(diffs.map((d) => d.project)).toEqual(['/tmp/alpha', '/tmp/zeta']);
+    expect(diffs[0].lines).toEqual(['- Line for alpha']);
+    expect(diffs[1].lines).toEqual(['- Line for zeta']);
+  });
+
+  it('buckets findings without a session row under an unknown-project label', () => {
+    seedFinding('ghost-session', 'missing_convention', '- Orphaned convention');
+    const diffs = buildClaudeMdDiffs(db);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].project).toBe('(unknown project)');
+  });
+});
+
+describe('normalizeClaudeMdLine', () => {
+  it('collapses whitespace and enforces the "- " prefix', () => {
+    expect(normalizeClaudeMdLine('  Use   pnpm ')).toBe('- Use pnpm');
+    expect(normalizeClaudeMdLine('- already bulleted')).toBe('- already bulleted');
+    expect(normalizeClaudeMdLine('* star bullet')).toBe('- star bullet');
+    expect(normalizeClaudeMdLine('   ')).toBeNull();
+    expect(normalizeClaudeMdLine('-')).toBeNull();
+  });
+});
+
+describe('writeClaudeMdSuggestions', () => {
+  it('writes CLAUDE.md.suggested in an existing project dir and never touches CLAUDE.md', () => {
+    const projDir = fs.mkdtempSync(path.join(tmpDir, 'proj-'));
+    const claudeMd = path.join(projDir, 'CLAUDE.md');
+    fs.writeFileSync(claudeMd, 'original content\n', 'utf8');
+
+    seedSession('s1', projDir);
+    seedFinding('s1', 'missing_convention', '- Tests use vitest; never suggest jest');
+
+    const written = writeClaudeMdSuggestions(db);
+    const suggested = path.join(projDir, 'CLAUDE.md.suggested');
+    expect(written).toEqual([suggested]);
+
+    const body = fs.readFileSync(suggested, 'utf8');
+    expect(body).toContain('generated by tokenlean');
+    expect(body).toContain('merge');
+    expect(body).toContain('- Tests use vitest; never suggest jest');
+
+    // CLAUDE.md itself is byte-for-byte untouched.
+    expect(fs.readFileSync(claudeMd, 'utf8')).toBe('original content\n');
+  });
+
+  it('does not create CLAUDE.md when the project has none', () => {
+    const projDir = fs.mkdtempSync(path.join(tmpDir, 'proj-'));
+    seedSession('s1', projDir);
+    seedFinding('s1', 'resupplied_context', '- Context worth persisting');
+
+    writeClaudeMdSuggestions(db);
+    expect(fs.existsSync(path.join(projDir, 'CLAUDE.md'))).toBe(false);
+    expect(fs.existsSync(path.join(projDir, 'CLAUDE.md.suggested'))).toBe(true);
+  });
+
+  it('falls back to <tokenleanHome>/suggestions for projects that do not exist', () => {
+    const missingProject = path.join(tmpDir, 'definitely', 'not', 'a', 'dir');
+    seedSession('s1', missingProject);
+    seedFinding('s1', 'missing_convention', '- Convention for a vanished project');
+
+    const written = writeClaudeMdSuggestions(db);
+    expect(written).toHaveLength(1);
+    const target = written[0];
+    expect(target.startsWith(path.join(process.env.TOKENLEAN_HOME!, 'suggestions'))).toBe(true);
+    expect(target.endsWith('.suggested')).toBe(true);
+    expect(fs.readFileSync(target, 'utf8')).toContain('- Convention for a vanished project');
+    // nothing written at (or near) the nonexistent project path
+    expect(fs.existsSync(missingProject)).toBe(false);
+  });
+
+  it('returns an empty list when there is nothing to write', () => {
+    expect(writeClaudeMdSuggestions(db)).toEqual([]);
+  });
+});
+
+describe('sanitizeProjectName', () => {
+  it('flattens paths into safe filenames', () => {
+    expect(sanitizeProjectName('/Users/me/dev/proj')).toBe('Users-me-dev-proj');
+    expect(sanitizeProjectName('(unknown project)')).toBe('unknown-project');
+    expect(sanitizeProjectName('///')).toBe('project');
+  });
+});

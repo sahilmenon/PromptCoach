@@ -1,0 +1,45 @@
+{
+  "name": "tokenlean",
+  "version": "0.1.0",
+  "description": "Local prompt-efficiency companion for Claude Code subscriptions",
+  "license": "MIT",
+  "bin": {
+    "tokenlean": "bin/tokenlean.js"
+  },
+  "main": "dist/cli.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "clean": "node scripts/clean-dist.cjs",
+    "build": "npm run clean && tsc",
+    "test": "vitest run",
+    "extension:check": "node --check extension/background.js && node --check extension/content.js && node -e \"JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8'))\"",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "ASSUMPTIONS.md",
+    "LICENSE",
+    "extension"
+  ],
+  "keywords": [
+    "claude-code",
+    "tokens",
+    "efficiency",
+    "sustainability",
+    "subscription"
+  ],
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
