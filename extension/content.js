@@ -1832,7 +1832,7 @@
         sendResponse({ success: false, error: "No prompts found on the page yet." });
         return false;
       }
-      chrome.storage.local.set({ recentPrompts: prompts.slice(-10) }, () => {
+      chrome.storage.local.set({ recentPrompts: prompts.slice(-10), recentPromptsAt: Date.now() }, () => {
         if (chrome.runtime.lastError) {
           sendResponse({ success: false, error: chrome.runtime.lastError.message });
         } else {
@@ -1889,9 +1889,10 @@
       return;
     }
     const recentPrompts = prompts.slice(-10);
-    // Storing recentPrompts triggers the background storage listener, which
-    // opens the dashboard — the single open path shared with popup Import.
-    chrome.storage.local.set({ recentPrompts }, () => {
+    // Storing recentPrompts (+ a fresh timestamp) triggers the background
+    // storage listener, which opens the dashboard — the single open path
+    // shared with popup Import.
+    chrome.storage.local.set({ recentPrompts, recentPromptsAt: Date.now() }, () => {
       if (chrome.runtime.lastError) {
         if (inspectStatus) inspectStatus.textContent = chrome.runtime.lastError.message;
         return;
@@ -1947,7 +1948,7 @@
       return;
     }
     importStatus.textContent = "Opening audit dashboard…";
-    await chrome.storage.local.set({ recentPrompts: importedPrompts });
+    await chrome.storage.local.set({ recentPrompts: importedPrompts, recentPromptsAt: Date.now() });
   };
 
   void refreshBridgeInfo();

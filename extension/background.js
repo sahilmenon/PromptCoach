@@ -101,15 +101,26 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
 
 // Single path for opening the audit dashboard: every producer (widget
 // Inspect, popup Inspect, popup/widget Import re-evaluate) writes
-// recentPrompts, and this listener reacts. Nothing opens dashboard.html
-// directly, so the dashboard can never double-open.
+// recentPrompts together with a fresh recentPromptsAt timestamp, and this
+// listener reacts to the timestamp. Nothing opens dashboard.html directly, so
+// the dashboard can never double-open.
+//
+// We watch recentPromptsAt (not recentPrompts) on purpose: chrome.storage's
+// onChanged does NOT fire when a key is written with the value it already has,
+// so re-harvesting the same chat or re-importing the same file would leave
+// recentPrompts unchanged and never open the dashboard. recentPromptsAt is a
+// new timestamp on every request, so the event always fires. It also keeps
+// dashboard.js's internal recentPrompts writes (mock fallback) from reopening.
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local" && changes.recentPrompts && changes.recentPrompts.newValue) {
-    chrome.tabs.query({ url: chrome.runtime.getURL("dashboard.html") }, (existingTabs) => {
+  if (areaName === "local" && changes.recentPromptsAt && changes.recentPromptsAt.newValue) {
+    const url = chrome.runtime.getURL("dashboard.html");
+    chrome.tabs.query({ url }, (existingTabs) => {
       if (existingTabs && existingTabs.length > 0) {
+        // Reload so an already-open dashboard re-reads the new prompts.
         chrome.tabs.update(existingTabs[0].id, { active: true });
+        chrome.tabs.reload(existingTabs[0].id);
       } else {
-        chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
+        chrome.tabs.create({ url });
       }
     });
   }

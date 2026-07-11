@@ -171,6 +171,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     importStatus.textContent = "Opening audit dashboard…";
-    await chrome.storage.local.set({ recentPrompts: importedPrompts });
+    await chrome.storage.local.set({ recentPrompts: importedPrompts, recentPromptsAt: Date.now() });
   };
 });
