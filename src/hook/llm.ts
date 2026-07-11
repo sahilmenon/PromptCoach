@@ -1,4 +1,6 @@
 import { hookLlmConfig, type HookLlmConfig } from '../config';
+import { completeWithCursor } from './cursorLlm';
+import type { ReviewProgress } from './progress';
 
 export const PROMPT_REVIEW_SYSTEM = [
   'You are a concise, encouraging prompt-quality coach for a general-purpose AI assistant.',
@@ -14,9 +16,12 @@ export const PROMPT_REVIEW_SYSTEM = [
   'Return JSON only with exactly these keys:',
   'needs_improvement: boolean',
   'category: one of vague, missing_context, overscoped, oversized_paste, other, good',
+  'score: integer from 0 to 10 rating the user\'s prompt quality (0 = unusable, 5 = okay but incomplete, 10 = excellent and ready to send). Always include score as a number — never omit it, never use null.',
   'feedback: one useful sentence in at most 240 characters, always required.',
-  'When good, state briefly what makes it actionable; an optional polish suggestion may follow.',
-  'When not good, gently suggest the single missing detail without scolding or reframing the user\'s task.',
+  'polished_prompt: string or null.',
+  'If the prompt is already good enough (needs_improvement=false), you MUST set polished_prompt to null. Do not rewrite, polish, or suggest an alternative prompt when the original is good enough.',
+  'When needs_improvement is true, gently name the single missing detail in feedback, and set polished_prompt to a clearer ready-to-send rewrite that preserves the user\'s intent and fixes that issue.',
+  'Keep polished_prompt under 1200 characters. Do not wrap it in quotes unless quoting is part of the prompt. Never invent a different task.',
 ].join('\n');
 
 export type ReviewCategory =
@@ -30,7 +35,10 @@ export type ReviewCategory =
 export interface PromptReview {
   needsImprovement: boolean;
   category: ReviewCategory;
+  score: number;
   feedback: string | null;
+  /** Present only when the original prompt needs improvement. */
+  polishedPrompt: string | null;
 }
 
 const CATEGORIES = new Set<ReviewCategory>([
@@ -96,15 +104,56 @@ export function parsePromptReview(raw: string): PromptReview | null {
   if (typeof value.feedback !== 'string') return null;
   const feedback = value.feedback.replace(/\s+/g, ' ').trim().slice(0, 240);
   if (!feedback) return null;
+
+  const rawScoreValue =
+    typeof value.score === 'number' || typeof value.score === 'string'
+      ? value.score
+      : typeof value.rate === 'number' || typeof value.rate === 'string'
+        ? value.rate
+        : NaN;
+  const rawScore = typeof rawScoreValue === 'number' ? rawScoreValue : Number(rawScoreValue);
+  const score = Number.isFinite(rawScore)
+    ? Math.min(10, Math.max(0, Math.round(rawScore)))
+    : (value.needs_improvement ? 4 : 8);
+
+  const polishedRaw =
+    typeof value.polished_prompt === 'string'
+      ? value.polished_prompt
+      : typeof value.polishedPrompt === 'string'
+        ? value.polishedPrompt
+        : '';
+  const polishedPrompt = polishedRaw.replace(/\r\n/g, '\n').trim().slice(0, 1_200);
+
   if (!value.needs_improvement) {
-    return { needsImprovement: false, category: 'good', feedback };
+    return {
+      needsImprovement: false,
+      category: 'good',
+      score,
+      feedback,
+      polishedPrompt: null,
+    };
   }
   if (value.category === 'good') return null;
+  if (!polishedPrompt) return null;
   return {
     needsImprovement: true,
     category: value.category as ReviewCategory,
+    score,
     feedback,
+    polishedPrompt,
   };
+}
+
+function extractChatCompletionsText(body: unknown): string | null {
+  if (body === null || typeof body !== 'object') return null;
+  const choices = (body as Record<string, unknown>).choices;
+  if (!Array.isArray(choices) || choices.length === 0) return null;
+  const first = choices[0];
+  if (first === null || typeof first !== 'object') return null;
+  const message = (first as Record<string, unknown>).message;
+  if (message === null || typeof message !== 'object') return null;
+  const content = (message as Record<string, unknown>).content;
+  return typeof content === 'string' ? content : null;
 }
 
 /**
@@ -114,15 +163,77 @@ export function parsePromptReview(raw: string): PromptReview | null {
 export async function reviewPromptWithLlm(
   prompt: string,
   cwd: string,
-  config: HookLlmConfig | null = hookLlmConfig()
+  config: HookLlmConfig | null = hookLlmConfig(),
+  onProgress?: ReviewProgress
 ): Promise<PromptReview | null> {
   if (config === null) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
 
+  const emit = (step: string, message: string, detail?: string) => {
+    try {
+      onProgress?.({
+        step,
+        message,
+        provider: config.provider,
+        model: config.model,
+        detail,
+      });
+    } catch {
+      // Progress is best-effort.
+    }
+  };
+
   try {
+    emit('start', `Using ${config.provider} · ${config.model}`);
+
+    if (config.provider === 'cursor') {
+      const input = JSON.stringify({ cwd, prompt: prompt.slice(0, 20_000) });
+      const text = await completeWithCursor(
+        PROMPT_REVIEW_SYSTEM,
+        input,
+        cwd,
+        config,
+        controller.signal
+      );
+      if (text === null) return null;
+      emit('parsing', 'Parsing model review…');
+      return parsePromptReview(text);
+    }
+
     const input = JSON.stringify({ cwd, prompt: prompt.slice(0, 20_000) });
+
+    if (config.provider === 'gemini') {
+      emit('requesting', `Calling Gemini (${config.model})`, config.baseUrl);
+      const response = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages: [
+            { role: 'system', content: PROMPT_REVIEW_SYSTEM },
+            { role: 'user', content: input },
+          ],
+          temperature: 0,
+          max_tokens: 700,
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) return null;
+      emit('parsing', 'Parsing model review…');
+      const text = extractChatCompletionsText(await response.json());
+      return text === null ? null : parsePromptReview(text);
+    }
+
     const anthropic = config.provider === 'anthropic';
+    emit(
+      'requesting',
+      anthropic ? `Calling Anthropic Messages (${config.model})` : `Calling OpenAI Responses (${config.model})`,
+      config.baseUrl
+    );
     const response = await fetch(config.baseUrl + (anthropic ? '/messages' : '/responses'), {
       method: 'POST',
       headers: anthropic
@@ -140,18 +251,19 @@ export async function reviewPromptWithLlm(
             model: config.model,
             system: PROMPT_REVIEW_SYSTEM,
             messages: [{ role: 'user', content: input }],
-            max_tokens: 300,
+            max_tokens: 700,
           }
         : {
             model: config.model,
             instructions: PROMPT_REVIEW_SYSTEM,
             input,
             reasoning: { effort: 'none' },
-            max_output_tokens: 300,
+            max_output_tokens: 700,
           }),
       signal: controller.signal,
     });
     if (!response.ok) return null;
+    emit('parsing', 'Parsing model review…');
     const body: unknown = await response.json();
     const text = anthropic ? extractAnthropicText(body) : extractOutputText(body);
     return text === null ? null : parsePromptReview(text);

@@ -23,7 +23,8 @@
     "README.md",
     "ASSUMPTIONS.md",
     "LICENSE",
-    "extension"
+    "extension",
+    ".env.example"
   ],
   "keywords": [
     "claude-code",

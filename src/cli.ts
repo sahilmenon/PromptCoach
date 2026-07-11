@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { openDb } from './db';
-import { defaultClaudeDir } from './config';
+import { defaultClaudeDir, hookLlmConfig } from './config';
 import { ingestTranscripts } from './analyzer/parser';
 import { runHeuristics, recordBaselineIfReady } from './analyzer/heuristics';
 import { buildReport, renderReport } from './report/report';
@@ -8,6 +8,10 @@ import { writeClaudeMdSuggestions } from './report/claudeMdDiff';
 import { getHookBypass, installHook, setHookBypass, uninstallHook, muteHooks } from './hook/install';
 import { installCodexHook, uninstallCodexHook } from './hook/codexInstall';
 import { runStatus } from './status';
+import { extensionServerPort, extensionServerUrl, startExtensionServer } from './extensionServer';
+import { loadEnvFiles } from './loadEnv';
+
+loadEnvFiles();
 
 function parseSince(raw?: string): number | undefined {
   if (!raw) return undefined;
@@ -104,6 +108,31 @@ hooks.command('bypass <mode>')
         throw new Error('bypass expects next, on, off, or status');
       }
     } finally { db.close(); }
+  });
+
+const extension = program.command('extension')
+  .description('Browser extension helpers that reuse the CLI prompt-review model');
+
+extension.command('serve')
+  .description('Run a local bridge so the extension Analyze button uses the same LLM review as the CLI hook')
+  .option('--port <number>', 'listen port', String(extensionServerPort()))
+  .action(async (opts: { port?: string }) => {
+    const port = Number(opts.port || extensionServerPort());
+    if (!Number.isFinite(port) || port < 1 || port > 65535) {
+      throw new Error('--port expects a number between 1 and 65535');
+    }
+    const config = hookLlmConfig();
+    const server = await startExtensionServer(port);
+    const url = extensionServerUrl(port);
+    console.log(`tokenlean extension bridge listening on ${url}`);
+    console.log(config
+      ? `Prompt review provider: ${config.provider} (${config.model})`
+      : 'No API key configured yet. Add GEMINI_API_KEY to .env (or ANTHROPIC/OPENAI/CURSOR), then retry Analyze in the extension.');
+    console.log('Keep this process running while using the browser extension.');
+    await new Promise<void>(() => {
+      // Stay alive until the user stops the process.
+      server.on('close', () => undefined);
+    });
   });
 
 program.command('status').description('Check local transcripts, hook, and analysis database')

@@ -47,22 +47,47 @@ changes `CLAUDE.md` directly.
 
 ## Live coaching
 
-Set an API key before starting Claude Code, then install the hook:
+Put an API key in a `.env` file (project directory or `~/.tokenlean/.env`), then
+install the hook:
 
 ```sh
-export ANTHROPIC_API_KEY="your-api-key"
+cp .env.example .env
+# edit .env and set GEMINI_API_KEY (or ANTHROPIC_API_KEY / OPENAI_API_KEY / CURSOR_API_KEY)
 npx tokenlean hooks install
 ```
 
-`TOKENLEAN_LLM_API_KEY` is also accepted. To use OpenAI instead:
+Shell `export` still works and overrides `.env`. `TOKENLEAN_LLM_API_KEY` is also
+accepted. To use Google Gemini (free tier):
 
 ```sh
-export TOKENLEAN_LLM_PROVIDER="openai"
-export OPENAI_API_KEY="your-api-key"
-export TOKENLEAN_LLM_BASE_URL="https://api.openai.com/v1"
-export TOKENLEAN_LLM_MODEL="gpt-5.4-nano"
-export TOKENLEAN_LLM_TIMEOUT_MS="7500"
+# in .env
+TOKENLEAN_LLM_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-api-key
+TOKENLEAN_LLM_MODEL=gemini-2.5-flash
 ```
+
+Get a key at [Google AI Studio](https://aistudio.google.com/app/apikey). To use OpenAI instead:
+
+```sh
+# in .env
+TOKENLEAN_LLM_PROVIDER=openai
+OPENAI_API_KEY=your-api-key
+TOKENLEAN_LLM_BASE_URL=https://api.openai.com/v1
+TOKENLEAN_LLM_MODEL=gpt-5.4-nano
+TOKENLEAN_LLM_TIMEOUT_MS=7500
+```
+
+To use a Cursor API key (from [Cursor Dashboard → API Keys](https://cursor.com/dashboard)):
+
+```sh
+# in .env
+CURSOR_API_KEY=your-cursor-api-key
+# optional: TOKENLEAN_LLM_MODEL=composer-2.5
+# optional faster path: npm i @cursor/sdk  (Node 22.13+)
+# or install the Cursor CLI (`agent`) and keep it on PATH
+```
+
+Without `@cursor/sdk` or the Cursor CLI, tokenlean falls back to Cursor's Cloud Agents API (slower). You can also point `TOKENLEAN_LLM_BASE_URL` at a local OpenAI-compatible Cursor proxy and keep `TOKENLEAN_LLM_PROVIDER=cursor`.
 
 `tokenlean hooks install` merges a command hook into
 `~/.claude/settings.json` and `~/.codex/hooks.json`, creating backups before
@@ -90,14 +115,25 @@ JSONL format only; live coaching supports both CLIs.
 
 ## Browser extension
 
-Load `extension/` as an unpacked Chrome extension. Its side panel can:
+Load `extension/` as an unpacked Chrome extension. Keep a local bridge running so
+Analyze uses the same hosted prompt-review model as the CLI hook:
 
+```text
+# .env with GEMINI_API_KEY (or ANTHROPIC / OPENAI / CURSOR)
+npx tokenlean extension serve
+```
+
+The extension can then:
+
+- review selected prompt text with that model after you click Analyze;
 - inspect the active page after you click Inspect;
 - read, suggest, and insert prompt text after separate approval clicks;
 - import JSONL, JSON, or text transcripts locally.
 
-It never submits a prompt. Imported raw text is not uploaded; only a small
-aggregate summary is stored in extension storage.
+It never submits a prompt to the chat site. Imported raw transcript text is not
+uploaded; only a small aggregate summary is stored in extension storage. Model
+review sends the selected prompt to your configured Anthropic, OpenAI, or Cursor
+API through the local bridge on `127.0.0.1:8787`.
 
 ## Privacy
 

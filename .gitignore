@@ -5,6 +5,8 @@ dist/
 *.sqlite-wal
 *.sqlite-shm
 .tokenlean/
+.env
+.env.local
 CLAUDE.md.suggested
 *.tsbuildinfo
 .DS_Store

@@ -47,7 +47,7 @@ export async function runStatus(): Promise<string> {
   const llm = hookLlmConfig();
   out.push(llm
     ? line('OK', `hosted prompt review configured: ${llm.model} via ${llm.provider}`)
-    : line('WARN', 'hosted prompt review needs ANTHROPIC_API_KEY or TOKENLEAN_LLM_API_KEY'));
+    : line('WARN', 'hosted prompt review needs a key in .env (GEMINI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY / CURSOR_API_KEY)'));
 
   out.push(line('--', '[local analysis]'));
   const file = dbPath();
