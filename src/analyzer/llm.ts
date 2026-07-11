@@ -1,20 +1,8 @@
-/**
- * Legacy pure analysis helpers retained for migration tests.
- * Network execution is disabled: tokenlean now runs on top of the user's
- * Claude Code subscription through local transcripts and hooks.
- */
-class Anthropic {
-  messages: any = {
-    batches: {
-      create: async () => { throw new Error('Developer API analysis is disabled.'); },
-      retrieve: async () => { throw new Error('Developer API analysis is disabled.'); },
-      results: async () => { throw new Error('Developer API analysis is disabled.'); },
-    },
-  };
-}
+import Anthropic from '@anthropic-ai/sdk';
 import type { DB } from '../db';
 import { addSelfSpend, metaGet, metaSet } from '../db';
 import { DEFAULT_LLM_MODEL, nowMs } from '../config';
+import { anthropicApiKey } from '../credentials';
 import type { CollectResult, SubmitResult } from '../types';
 
 /**
@@ -63,13 +51,13 @@ const PRIVACY_NOTICE = [
   '----------------------------------------------------------------------',
   'PRIVACY NOTICE (shown once, before the first LLM analysis)',
   '',
-  'tokenlean is about to send condensed transcripts of your Claude Code',
+  'LLMGuide is about to send condensed transcripts of your Claude Code',
   'sessions to the Anthropic API for analysis. Transcripts are sent AS-IS:',
   'any code, file paths, and prompt text they contain are included.',
   'Nothing is redacted. Automatic redaction is a planned v2 feature (see',
-  'the tokenlean issue tracker).',
+  'the LLMGuide issue tracker).',
   '',
-  'To opt out, run `tokenlean analyze --sample 0` or unset',
+  'To opt out, run `llmguide analyze --sample 0` or unset',
   'ANTHROPIC_API_KEY. Heuristic analysis stays fully local either way.',
   '----------------------------------------------------------------------',
 ].join('\n');
@@ -136,6 +124,14 @@ export interface ParsedLlmFinding {
 
 type Log = (msg: string) => void;
 const noop: Log = () => {};
+
+function anthropicClient(): Anthropic {
+  return new Anthropic({
+    apiKey: anthropicApiKey() || undefined,
+    baseURL: (process.env.LLMGUIDE_LLM_BASE_URL || process.env.TOKENLEAN_LLM_BASE_URL)
+      ?.replace(/\/+$/, ''),
+  });
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -349,7 +345,7 @@ export async function submitLlmBatch(
   const log = opts.log ?? noop;
 
   // cli.ts gates on the key already, but never let a missing key throw here.
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!anthropicApiKey()) {
     return {
       submitted: 0,
       batchId: null,
@@ -375,7 +371,7 @@ export async function submitLlmBatch(
   showPrivacyNoticeOnce(db, log);
 
   const model = opts.model || DEFAULT_LLM_MODEL;
-  const client = new Anthropic();
+  const client = anthropicClient();
   const requests = candidates.map((c) => ({
     custom_id: c.id, // session id; results are keyed back to sessions by this
     params: {
@@ -416,10 +412,10 @@ export async function submitLlmBatch(
     const collected = await collectLlmResults(db, { wait: true, log });
     message +=
       collected.stillPending > 0
-        ? ` Batch still processing after the wait cap — run \`tokenlean report\` later to collect results.`
+        ? ` Batch still processing after the wait cap — run \`llmguide report\` later to collect results.`
         : ` Collected ${collected.findingsAdded} finding(s) from ${collected.batchesCompleted} completed batch(es).`;
   } else {
-    message += ' Results are collected by `tokenlean report` or `tokenlean analyze --wait`.';
+    message += ' Results are collected by `llmguide report` or `llmguide analyze --wait`.';
   }
 
   return {
@@ -449,12 +445,12 @@ export async function collectLlmResults(
     .all() as { id: string }[];
   if (pending.length === 0) return out;
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!anthropicApiKey()) {
     out.stillPending = pending.length;
     return out;
   }
 
-  const client = new Anthropic();
+  const client = anthropicClient();
   const deadline = nowMs() + POLL_CAP_MS;
 
   for (const row of pending) {
@@ -559,7 +555,7 @@ async function collectEndedBatch(
     }
   }
 
-  // Self-accounting (SPEC §1/§4.4): every token tokenlean spends is recorded.
+  // Self-accounting (SPEC §1/§4.4): every token LLMGuide spends is recorded.
   if (inputTokens > 0 || outputTokens > 0) {
     const usd =
       (inputTokens / 1e6) * BATCH_USD_PER_MTOK_INPUT +

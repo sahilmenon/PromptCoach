@@ -1,6 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import { anthropicApiKey } from './credentials';
 
 /**
  * All filesystem locations and environment lookups in one place.
@@ -8,13 +9,17 @@ import * as fs from 'fs';
  * never touch the user's real state.
  */
 
-/** Root for tokenlean's own local state. Override: TOKENLEAN_HOME. */
-export function tokenleanHome(): string {
-  return process.env.TOKENLEAN_HOME || path.join(os.homedir(), '.tokenlean');
+/** Root for LLMGuide state. Legacy TokenLean variables and data remain readable. */
+export function llmguideHome(): string {
+  const override = process.env.LLMGUIDE_HOME || process.env.TOKENLEAN_HOME;
+  if (override) return override;
+  const current = path.join(os.homedir(), '.llmguide');
+  const legacy = path.join(os.homedir(), '.tokenlean');
+  return !fs.existsSync(current) && fs.existsSync(legacy) ? legacy : current;
 }
 
 export function dbPath(): string {
-  return process.env.TOKENLEAN_DB || path.join(tokenleanHome(), 'db.sqlite');
+  return process.env.LLMGUIDE_DB || process.env.TOKENLEAN_DB || path.join(llmguideHome(), 'db.sqlite');
 }
 
 /** The Claude Code config dir (contains projects/ and settings.json). */
@@ -33,9 +38,10 @@ export function resolveProjectsDir(claudeDir: string): string {
   return claudeDir;
 }
 
-/** Claude Code settings.json (hook + env live here). Override: TOKENLEAN_CLAUDE_SETTINGS. */
+/** Claude Code settings.json. LLMGUIDE_CLAUDE_SETTINGS overrides the default. */
 export function claudeSettingsPath(): string {
   return (
+    process.env.LLMGUIDE_CLAUDE_SETTINGS ||
     process.env.TOKENLEAN_CLAUDE_SETTINGS ||
     path.join(defaultClaudeDir(), 'settings.json')
   );
@@ -47,7 +53,8 @@ export function codexHome(): string {
 }
 
 export function codexHooksPath(): string {
-  return process.env.TOKENLEAN_CODEX_HOOKS || path.join(codexHome(), 'hooks.json');
+  return process.env.LLMGUIDE_CODEX_HOOKS || process.env.TOKENLEAN_CODEX_HOOKS ||
+    path.join(codexHome(), 'hooks.json');
 }
 
 export function nowMs(): number {
@@ -62,22 +69,27 @@ export interface HookLlmConfig {
   timeoutMs: number;
 }
 
+/** Default low-cost model for hosted transcript and prompt analysis. */
+export const DEFAULT_LLM_MODEL = 'claude-haiku-4-5';
+
 /** Hosted prompt-review model used by the UserPromptSubmit hook. */
 export function hookLlmConfig(): HookLlmConfig | null {
-  const requested = process.env.TOKENLEAN_LLM_PROVIDER?.toLowerCase();
+  const requested = (process.env.LLMGUIDE_LLM_PROVIDER || process.env.TOKENLEAN_LLM_PROVIDER)?.toLowerCase();
   const provider = requested === 'openai' || requested === 'anthropic'
     ? requested
-    : process.env.ANTHROPIC_API_KEY
+    : anthropicApiKey()
       ? 'anthropic'
       : process.env.OPENAI_API_KEY
         ? 'openai'
         : 'anthropic';
   const apiKey = (provider === 'anthropic'
-    ? process.env.ANTHROPIC_API_KEY
-    : process.env.OPENAI_API_KEY) || process.env.TOKENLEAN_LLM_API_KEY;
+    ? anthropicApiKey()
+    : process.env.OPENAI_API_KEY) || process.env.LLMGUIDE_LLM_API_KEY ||
+      process.env.TOKENLEAN_LLM_API_KEY;
   if (!apiKey) return null;
 
-  const rawTimeout = Number(process.env.TOKENLEAN_LLM_TIMEOUT_MS || 7_500);
+  const rawTimeout = Number(process.env.LLMGUIDE_LLM_TIMEOUT_MS ||
+    process.env.TOKENLEAN_LLM_TIMEOUT_MS || 7_500);
   const timeoutMs = Number.isFinite(rawTimeout)
     ? Math.min(9_000, Math.max(500, rawTimeout))
     : 7_500;
@@ -85,11 +97,11 @@ export function hookLlmConfig(): HookLlmConfig | null {
   return {
     provider,
     apiKey,
-    baseUrl: (process.env.TOKENLEAN_LLM_BASE_URL ||
+    baseUrl: (process.env.LLMGUIDE_LLM_BASE_URL || process.env.TOKENLEAN_LLM_BASE_URL ||
       (provider === 'anthropic' ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1'))
       .replace(/\/+$/, ''),
-    model: process.env.TOKENLEAN_LLM_MODEL ||
-      (provider === 'anthropic' ? 'claude-haiku-4-5' : 'gpt-5.4-nano'),
+    model: process.env.LLMGUIDE_LLM_MODEL || process.env.TOKENLEAN_LLM_MODEL ||
+      (provider === 'anthropic' ? DEFAULT_LLM_MODEL : 'gpt-5.4-nano'),
     timeoutMs,
   };
 }

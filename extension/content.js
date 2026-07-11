@@ -1,7 +1,7 @@
 (() => {
-  const existing = document.getElementById("tokenlean-floating-root");
+  const existing = document.getElementById("llmguide-floating-root");
   if (existing) {
-    // Re-injection should not toggle visibility — only TOKENLEAN_TOGGLE does.
+    // Re-injection should not toggle visibility — only LLMGUIDE_TOGGLE does.
     return;
   }
 
@@ -19,11 +19,11 @@
   const onGpt = /(?:^|\.)(?:chatgpt\.com|chat\.openai\.com)$/i.test(location.hostname);
 
   const host = document.createElement("div");
-  host.id = "tokenlean-floating-root";
-  host.setAttribute("data-tokenlean", "floating-widget");
+  host.id = "llmguide-floating-root";
+  host.setAttribute("data-llmguide", "floating-widget");
   document.documentElement.appendChild(host);
   const root = host.attachShadow({ mode: "open" });
-  const logoUrl = chrome.runtime.getURL("icons/tokenlean-logo.png");
+  const logoUrl = chrome.runtime.getURL("icons/llmguide-logo.png");
 
   const isEditableRoot = (node) => {
     if (!(node instanceof HTMLElement) || host.contains(node)) return false;
@@ -303,13 +303,13 @@
         .widget { right:12px; bottom:64px; width:calc(100vw - 24px); max-height:calc(100vh - 84px); }
       }
     </style>
-    <div class="shell" aria-label="tokenlean floating tools">
-      <button class="fab" id="fab" type="button" title="Open tokenlean" aria-label="Open tokenlean" aria-expanded="false">
+    <div class="shell" aria-label="LLMGuide floating tools">
+      <button class="fab" id="fab" type="button" title="Open LLMGuide" aria-label="Open LLMGuide" aria-expanded="false">
         <img src="${logoUrl}" alt="">
       </button>
-      <section class="widget" id="widget" role="dialog" aria-label="tokenlean tools">
+      <section class="widget" id="widget" role="dialog" aria-label="LLMGuide tools">
         <header class="top">
-          <span class="mark"><img src="${logoUrl}" alt=""></span><span class="name">tokenlean</span>
+          <span class="mark"><img src="${logoUrl}" alt=""></span><span class="name">LLMGuide</span>
           <span class="local">LOCAL ONLY</span>
           <button class="icon" id="close" type="button" title="Collapse to icon">×</button>
         </header>
@@ -323,7 +323,7 @@
             <article class="card">
               <p class="label">IMPROVE A PROMPT</p>
               <h2>Review every change</h2>
-              <p>Select text in a prompt field to see the analyze bubble. tokenlean never submits it.</p>
+              <p>Select text in a prompt field to see the analyze bubble. LLMGuide never submits it.</p>
               <button class="action soft" id="read" type="button">Read focused prompt</button>
               <textarea id="editor" placeholder="Focus a prompt field, or write a prompt here."></textarea>
               <button class="action soft" id="analyze" type="button">Analyze prompt</button>
@@ -354,7 +354,7 @@
         <footer class="privacy">Temporary page access · no prompt auto-submit · no developer API</footer>
       </section>
 
-      <div class="toolbar" id="toolbar" role="toolbar" aria-label="tokenlean selection tools" hidden>
+      <div class="toolbar" id="toolbar" role="toolbar" aria-label="LLMGuide selection tools" hidden>
         <span class="tb-brand" aria-hidden="true"><img src="${logoUrl}" alt=""></span>
         <button class="tb-btn primary" id="tb-analyze" type="button">Analyze</button>
         <button class="tb-btn" id="tb-structure" type="button">Structure</button>
@@ -856,11 +856,11 @@
   }, true);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "TOKENLEAN_PING") {
+    if (message?.type === "LLMGUIDE_PING") {
       sendResponse({ ok: true });
       return false;
     }
-    if (message?.type === "TOKENLEAN_TOGGLE") {
+    if (message?.type === "LLMGUIDE_TOGGLE") {
       host.hidden = !host.hidden;
       sendResponse({ ok: true, hidden: host.hidden });
       return false;
@@ -965,7 +965,7 @@
   };
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type === "TOKENLEAN_TOGGLE") {
+    if (message?.type === "LLMGUIDE_TOGGLE") {
       host.hidden = !host.hidden;
       sendResponse({ success: true, hidden: host.hidden });
     } else if (message?.action === "read_prompt") {

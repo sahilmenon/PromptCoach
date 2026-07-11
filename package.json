@@ -1,12 +1,23 @@
 {
-  "name": "tokenlean",
+  "name": "llmguide",
   "version": "0.1.0",
-  "description": "Local prompt-efficiency companion for Claude Code subscriptions",
+  "description": "Prompt-efficiency coach for Claude Code and Codex CLI",
   "license": "MIT",
   "bin": {
-    "tokenlean": "bin/tokenlean.js"
+    "llmguide": "bin/llmguide.js"
   },
   "main": "dist/cli.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zackkzz/csesoc_flagship_hackathon.git"
+  },
+  "homepage": "https://github.com/Zackkzz/csesoc_flagship_hackathon#readme",
+  "bugs": {
+    "url": "https://github.com/Zackkzz/csesoc_flagship_hackathon/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -27,12 +38,16 @@
   ],
   "keywords": [
     "claude-code",
+    "codex",
+    "llm",
+    "prompt-engineering",
     "tokens",
     "efficiency",
     "sustainability",
     "subscription"
   ],
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "better-sqlite3": "^12.11.1",
     "commander": "^12.1.0"
   },

@@ -3,7 +3,7 @@ const AI_MATCH =
 
 async function ensureContentScript(tabId) {
   try {
-    await chrome.tabs.sendMessage(tabId, { type: "TOKENLEAN_PING" });
+    await chrome.tabs.sendMessage(tabId, { type: "LLMGUIDE_PING" });
     return true;
   } catch {
     try {
@@ -21,7 +21,7 @@ async function ensureContentScript(tabId) {
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return;
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: "TOKENLEAN_TOGGLE" });
+    await chrome.tabs.sendMessage(tab.id, { type: "LLMGUIDE_TOGGLE" });
   } catch {
     await ensureContentScript(tab.id);
   }

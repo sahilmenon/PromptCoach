@@ -1,13 +1,13 @@
-# Running tokenlean with Claude CLI
+# Running llmguide with Claude CLI
 
-tokenlean runs from your normal terminal alongside Claude Code. It is not a
+llmguide runs from your normal terminal alongside Claude Code. It is not a
 command entered inside Claude's chat.
 
 It uses the local transcripts created by Claude Code and does not require an
 Anthropic developer API key, replace subscription authentication, or create
 separate API charges.
 
-## 1. Build and install tokenlean locally
+## 1. Build and install llmguide locally
 
 ```bash
 cd /Users/guangsizeng/Documents/myCode/csesoc_flagship_hackathon
@@ -16,11 +16,11 @@ npm run build
 npm link
 ```
 
-Confirm that tokenlean is available:
+Confirm that llmguide is available:
 
 ```bash
-tokenlean --help
-tokenlean status
+llmguide --help
+llmguide status
 ```
 
 ## 2. Use Claude CLI normally
@@ -38,7 +38,7 @@ session transcripts under:
 ~/.claude/projects/
 ```
 
-tokenlean reads these files locally. It does not change Claude authentication
+llmguide reads these files locally. It does not change Claude authentication
 or route Claude traffic through a proxy.
 
 ## 3. Analyze your Claude Code sessions
@@ -46,16 +46,16 @@ or route Claude traffic through a proxy.
 Exit Claude Code or open another terminal, then run:
 
 ```bash
-tokenlean analyze
-tokenlean report
+llmguide analyze
+llmguide report
 ```
 
 Useful report variants:
 
 ```bash
-tokenlean report --since 7d
-tokenlean report --json
-tokenlean report --write-claude-md
+llmguide report --since 7d
+llmguide report --json
+llmguide report --write-claude-md
 ```
 
 `--write-claude-md` creates a `CLAUDE.md.suggested` file. It never edits
@@ -66,8 +66,8 @@ your real `CLAUDE.md` directly.
 Install the local Claude Code prompt hook:
 
 ```bash
-tokenlean hooks install
-tokenlean status
+llmguide hooks install
+llmguide status
 ```
 
 Restart Claude Code after installing the hook:
@@ -83,8 +83,8 @@ submits your prompt. It also makes no model or network calls.
 Manage coaching with:
 
 ```bash
-tokenlean hooks mute 3
-tokenlean hooks uninstall
+llmguide hooks mute 3
+llmguide hooks uninstall
 ```
 
 ## Typical workflow
@@ -94,11 +94,11 @@ tokenlean hooks uninstall
 claude
 
 # After the session, analyze recent usage.
-tokenlean analyze
-tokenlean report --since 7d
+llmguide analyze
+llmguide report --since 7d
 ```
 
-## If the tokenlean command is not found
+## If the llmguide command is not found
 
 Run the compiled CLI directly:
 

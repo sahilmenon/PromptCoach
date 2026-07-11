@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS llm_batches (
 `;
 
 /**
- * Open (creating if needed) the tokenlean database.
+ * Open (creating if needed) the LLMGuide database.
  * WAL + short busy timeout: the hook and the analyzer may run concurrently,
  * and the hook must never wait long or crash on lock contention.
  */
@@ -114,7 +114,7 @@ export function metaSetJson(db: DB, key: string, value: unknown): void {
 
 const SELF_SPEND_KEY = 'self_spend';
 
-/** Accumulate tokenlean's own analysis spend (SPEC §4.4 self-accounting). */
+/** Accumulate LLMGuide's own analysis spend (SPEC §4.4 self-accounting). */
 export function addSelfSpend(db: DB, delta: SelfSpend): SelfSpend {
   const cur = getSelfSpend(db);
   const next: SelfSpend = {
