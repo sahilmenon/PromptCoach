@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PromptCoach",
+  "name": "Prompt Coach",
   "version": "0.3.6",
-  "description": "Floating prompt coach with live model review, inspect audit, and local transcript tools.",
+  "description": "Review, improve, and audit your AI prompts with a private prompt coach.",
   "permissions": ["storage", "activeTab", "scripting", "tabs"],
   "host_permissions": [
     "http://127.0.0.1:8787/*",
@@ -22,7 +22,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "PromptCoach",
+    "default_title": "Prompt Coach",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -52,7 +52,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["icons/promptcoach-logo.png", "icons/tokenlean-logo.png"],
+      "resources": ["icons/prompt-coach-logo.svg", "icons/prompt-coach-launcher.svg", "icons/icon32.png"],
       "matches": ["<all_urls>"]
     },
     {

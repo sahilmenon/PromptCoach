@@ -9,6 +9,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const promptStatus = document.getElementById('prompt-status');
   const analysisBox = document.getElementById('analysis');
   const inspectStatus = document.getElementById('inspect-status');
+  const workflowSteps = document.querySelectorAll('.workflow-step');
+
+  const setWorkflowStep = (step) => {
+    const order = { prompt: 0, review: 1, apply: 2 };
+    workflowSteps.forEach((item) => {
+      item.classList.toggle('active', order[item.dataset.step] <= order[step]);
+    });
+  };
 
   // Tab switching
   tabs.forEach(tab => {
@@ -23,10 +31,20 @@ document.addEventListener('DOMContentLoaded', () => {
   // Header: show/hide the floating on-page widget.
   document.getElementById('toggle-widget').onclick = () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (activeTabs) => {
-      if (!activeTabs[0]?.id) return;
-      chrome.tabs.sendMessage(activeTabs[0].id, { type: 'PROMPTCOACH_TOGGLE' }, () => {
+      const tabId = activeTabs[0]?.id;
+      if (!tabId) return;
+      chrome.tabs.sendMessage(tabId, { type: 'PROMPTCOACH_TOGGLE' }, () => {
         if (chrome.runtime.lastError) {
-          promptStatus.textContent = 'Widget is only available on supported AI sites.';
+          chrome.scripting.executeScript({
+            target: { tabId },
+            files: ['lib/promptcoach-core.js', 'content.js'],
+          }, () => {
+            if (chrome.runtime.lastError) {
+              promptStatus.textContent = 'Widget is only available on supported AI sites.';
+              return;
+            }
+            promptStatus.textContent = 'Widget reconnected to this page.';
+          });
         }
       });
     });
@@ -53,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (response && response.text !== undefined) {
           editor.value = response.text;
           promptStatus.textContent = response.text ? "Prompt loaded from page." : "The focused field is empty.";
+          setWorkflowStep('prompt');
         } else {
           promptStatus.textContent = "Could not read from page. Ensure a prompt field is focused.";
         }
@@ -69,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     renderAnalysis(analyzePromptText(text));
     promptStatus.textContent = "Local analysis ready.";
+    setWorkflowStep('review');
   };
 
   document.getElementById('improve').onclick = () => {
@@ -77,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
     editor.value = structurePrompt(raw);
     renderAnalysis(analyzePromptText(editor.value));
     promptStatus.textContent = "Suggestion ready. Edit it before inserting.";
+    setWorkflowStep('review');
   };
 
   document.getElementById('insert').onclick = () => {
@@ -85,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
       chrome.tabs.sendMessage(activeTabs[0].id, { action: "insert_prompt", value }, (response) => {
         if (response && response.success) {
           promptStatus.textContent = "Inserted into the page, but not submitted.";
+          setWorkflowStep('apply');
         } else {
           promptStatus.textContent = response?.error || "Failed to insert.";
         }
@@ -92,10 +114,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  // Tab 2: Inspect (Deep Audit). The content script stores the harvested
+  // Tab 2: History audit. The content script stores the collected
   // prompts; the background storage listener opens the dashboard.
   document.getElementById('harvest-btn').onclick = () => {
-    inspectStatus.textContent = "Harvesting prompts from Gemini...";
+    inspectStatus.textContent = "Collecting prompts from Gemini for review...";
     chrome.tabs.query({ active: true, currentWindow: true }, (activeTabs) => {
       const activeTab = activeTabs[0];
       if (!activeTab || !activeTab.url || !activeTab.url.includes("gemini.google.com")) {
