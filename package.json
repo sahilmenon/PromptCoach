@@ -14,7 +14,7 @@
     "clean": "node scripts/clean-dist.cjs",
     "build": "npm run clean && tsc",
     "test": "vitest run",
-    "extension:check": "node --check extension/background.js && node --check extension/panel.js && node -e \"JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8'))\"",
+    "extension:check": "node --check extension/background.js && node --check extension/content.js && node -e \"JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8'))\"",
     "prepublishOnly": "npm run build && npm test"
   },
   "files": [
