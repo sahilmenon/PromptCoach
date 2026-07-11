@@ -192,9 +192,17 @@ document.addEventListener('DOMContentLoaded', () => {
     summary.hidden = false;
     summary.textContent = `Files: ${files.length}\nParsed records: ${records}\nDetected turns: ${turns}\nUser prompts found: ${prompts.length}\nMalformed records skipped: ${malformed}\nCharacters read locally: ${characters.toLocaleString()}`;
     reevaluateBtn.disabled = prompts.length === 0;
-    importStatus.textContent = prompts.length
-      ? `${prompts.length} prompt(s) ready. Click Re-evaluate to open the audit.`
-      : "No user prompts found in these files.";
+
+    if (prompts.length) {
+      // Auto-open the audit dashboard as soon as the upload is parsed: publish
+      // the prompts, then open the dashboard (dashboard.js reads recentPrompts
+      // and runs the Gemini audit).
+      importStatus.textContent = "Opening audit dashboard…";
+      await chrome.storage.local.set({ recentPrompts: prompts });
+      chrome.runtime.sendMessage({ action: "open_dashboard" });
+    } else {
+      importStatus.textContent = "No user prompts found in these files.";
+    }
   };
 
   // Re-evaluate: publish the imported prompts as recentPrompts. The background
@@ -207,5 +215,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     importStatus.textContent = "Opening audit dashboard…";
     await chrome.storage.local.set({ recentPrompts: importedPrompts });
+    chrome.runtime.sendMessage({ action: "open_dashboard" });
   };
 });

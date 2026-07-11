@@ -940,28 +940,71 @@
 
   root.querySelector("#files").onchange = async (event) => {
     const files = [...event.target.files];
-    let records = 0, malformed = 0, turns = 0, characters = 0;
+    let records = 0, malformed = 0, characters = 0;
+    const prompts = [];
+    const counters = { turns: 0 };
+
+    // Pull the user's own prompt text out of one transcript node (Claude Code
+    // message.role/content or generic role/content; string or text-block array).
+    const extractUserText = (node) => {
+      const msg = node?.message ?? node;
+      if (msg?.role !== "user") return "";
+      const content = msg.content;
+      if (typeof content === "string") return content.trim();
+      if (Array.isArray(content)) {
+        return content
+          .filter((b) => b?.type === "text" && typeof b.text === "string")
+          .map((b) => b.text)
+          .join("\n")
+          .trim();
+      }
+      return "";
+    };
+
+    // Walk any JSON shape (wrappers like {conversation:[...]}/{messages:[...]},
+    // top-level arrays, Claude Code JSONL lines) and collect user prompt text.
+    const collect = (node) => {
+      if (Array.isArray(node)) { for (const el of node) collect(el); return; }
+      if (!node || typeof node !== "object") return;
+      if (node.role || node.message?.role) counters.turns++;
+      const t = extractUserText(node);
+      if (t) { prompts.push(t); return; }
+      for (const key in node) collect(node[key]);
+    };
+
     for (const file of files) {
       const text = await file.text();
       characters += text.length;
-      const entries = file.name.endsWith(".jsonl") ? text.split(/\r?\n/).filter(Boolean) : [text];
+      const isJsonl = file.name.endsWith(".jsonl");
+      const isTxt = file.name.endsWith(".txt");
+      const entries = isJsonl ? text.split(/\r?\n/).filter(Boolean) : [text];
       for (const entry of entries) {
         try {
           const value = JSON.parse(entry);
-          const items = Array.isArray(value) ? value : [value];
-          records += items.length;
-          for (const item of items) if (item?.role || item?.message?.role) turns++;
+          records += Array.isArray(value) ? value.length : 1;
+          collect(value);
         } catch (e) {
-          if (!file.name.endsWith(".txt")) malformed++;
+          if (isTxt) prompts.push(text.trim());
+          else malformed++;
         }
       }
     }
+
+    const turns = counters.turns;
     await chrome.storage.local.set({
       transcriptSummary: { files:files.length, records, malformed, turns, characters, importedAt:Date.now() },
     });
     const summary = root.querySelector("#summary");
     summary.hidden = false;
-    summary.textContent = `Files: ${files.length}\nParsed records: ${records}\nDetected turns: ${turns}\nMalformed records skipped: ${malformed}\nCharacters read locally: ${characters.toLocaleString()}`;
+    summary.textContent = `Files: ${files.length}\nParsed records: ${records}\nDetected turns: ${turns}\nUser prompts found: ${prompts.length}\nMalformed records skipped: ${malformed}\nCharacters read locally: ${characters.toLocaleString()}`;
+
+    if (prompts.length) {
+      // Publish prompts, then open the audit dashboard (dashboard.js reads
+      // recentPrompts and runs the Gemini audit). Same pipeline as the widget's
+      // Inspect tab and the popup's Import tab.
+      await chrome.storage.local.set({ recentPrompts: prompts });
+      chrome.runtime.sendMessage({ action: "open_dashboard" });
+    }
   };
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

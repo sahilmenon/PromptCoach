@@ -38,18 +38,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   await ensureContentScript(tabId);
 });
 
-// Detect storage write completion to open dashboard.html
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local" && changes.recentPrompts && changes.recentPrompts.newValue) {
-    chrome.tabs.query({ url: chrome.runtime.getURL("dashboard.html") }, (existingTabs) => {
-      if (existingTabs && existingTabs.length > 0) {
-        chrome.tabs.update(existingTabs[0].id, { active: true });
-      } else {
-        chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
-      }
-    });
-  }
-});
+// The dashboard is opened explicitly via the "open_dashboard" message below.
+// (A storage.onChanged listener was removed: it silently no-ops when the same
+// prompts are written twice, so re-importing the same file didn't reopen it.)
 
 // Message broker to forward messages from popup.js to content.js if chrome.runtime.sendMessage is used
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -66,13 +57,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Keep message channel open for async response
   }
   if (message.action === "open_dashboard") {
-    chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") }, (tab) => {
-      if (chrome.runtime.lastError) {
-        console.warn("Error creating dashboard tab:", chrome.runtime.lastError.message);
-        sendResponse({ success: false, error: chrome.runtime.lastError.message });
-      } else {
-        sendResponse({ success: true, tabId: tab.id });
+    const url = chrome.runtime.getURL("dashboard.html");
+    // Focus an existing dashboard tab if there is one, otherwise open a new one
+    // — so repeated audits don't pile up duplicate tabs.
+    chrome.tabs.query({ url }, (existingTabs) => {
+      if (existingTabs && existingTabs.length > 0) {
+        chrome.tabs.update(existingTabs[0].id, { active: true });
+        chrome.tabs.reload(existingTabs[0].id);
+        sendResponse({ success: true, tabId: existingTabs[0].id });
+        return;
       }
+      chrome.tabs.create({ url }, (tab) => {
+        if (chrome.runtime.lastError) {
+          console.warn(
+            "Error creating dashboard tab:",
+            chrome.runtime.lastError.message,
+          );
+          sendResponse({
+            success: false,
+            error: chrome.runtime.lastError.message,
+          });
+        } else {
+          sendResponse({ success: true, tabId: tab.id });
+        }
+      });
     });
     return true;
   }
