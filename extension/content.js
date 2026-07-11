@@ -8,6 +8,9 @@
   let lastEditable = null;
   let hintTarget = null;
   let hintHideTimer = 0;
+  let hintShowTimer = 0;
+  let selectionPending = false;
+  let allowBubbleClick = false;
 
   const host = document.createElement("div");
   host.id = "tokenlean-floating-root";
@@ -369,6 +372,9 @@
 
   const hideHint = () => {
     clearTimeout(hintHideTimer);
+    clearTimeout(hintShowTimer);
+    hintShowTimer = 0;
+    selectionPending = false;
     hint.classList.remove("show");
     hintTarget = null;
   };
@@ -438,27 +444,52 @@
     hint.style.top = top + "px";
   };
 
-  let allowBubbleClick = false;
-
-  const syncHintToSelection = () => {
-    if (host.hidden || allowBubbleClick) return;
-    const selected = findSelectedPromptField();
-    if (!selected) {
-      hideHint();
-      return;
-    }
+  const revealHint = (selected) => {
     hintTarget = selected.field;
     lastEditable = selected.field;
     positionHint(selected.field, selected.rect);
-    requestAnimationFrame(() => {
+    hint.classList.add("show");
+  };
+
+  const cancelPendingHint = () => {
+    clearTimeout(hintShowTimer);
+    hintShowTimer = 0;
+  };
+
+  const scheduleHintAfterIdle = () => {
+    if (host.hidden || allowBubbleClick) return;
+    cancelPendingHint();
+    const selected = findSelectedPromptField();
+    if (!selected) {
+      selectionPending = false;
+      if (hint.classList.contains("show")) hideHint();
+      return;
+    }
+    selectionPending = true;
+    hintTarget = selected.field;
+    lastEditable = selected.field;
+    if (hint.classList.contains("show")) {
+      positionHint(selected.field, selected.rect);
+      return;
+    }
+    hintShowTimer = setTimeout(() => {
+      hintShowTimer = 0;
+      selectionPending = false;
       const again = findSelectedPromptField();
-      if (!again || again.field !== selected.field) {
+      if (!again) {
         hideHint();
         return;
       }
-      positionHint(again.field, again.rect);
-      hint.classList.add("show");
-    });
+      revealHint(again);
+    }, 350);
+  };
+
+  const onUserActivity = () => {
+    if (allowBubbleClick) return;
+    // While the user is still interacting, keep the bubble hidden and restart the idle wait.
+    if (!hint.classList.contains("show")) cancelPendingHint();
+    clearTimeout(hintHideTimer);
+    hintHideTimer = setTimeout(scheduleHintAfterIdle, 40);
   };
 
   fab.addEventListener("click", () => {
@@ -469,6 +500,7 @@
   hint.addEventListener("pointerdown", (event) => {
     event.preventDefault();
     allowBubbleClick = true;
+    cancelPendingHint();
     clearTimeout(hintHideTimer);
     setTimeout(() => { allowBubbleClick = false; }, 400);
   });
@@ -487,48 +519,43 @@
     runAnalysis(text);
   };
 
-  document.addEventListener("selectionchange", () => {
-    clearTimeout(hintHideTimer);
-    hintHideTimer = setTimeout(syncHintToSelection, 60);
-  });
-
-  document.addEventListener(
-    "mouseup",
-    (event) => {
-      if (event.button !== 0) return;
-      clearTimeout(hintHideTimer);
-      hintHideTimer = setTimeout(syncHintToSelection, 30);
-    },
-    true,
-  );
-
+  document.addEventListener("selectionchange", onUserActivity);
+  document.addEventListener("pointermove", onUserActivity, true);
+  document.addEventListener("wheel", onUserActivity, true);
   document.addEventListener(
     "keydown",
     (event) => {
-      if (event.key === "Escape") hideHint();
-      else if (hint.classList.contains("show")) {
-        clearTimeout(hintHideTimer);
-        hintHideTimer = setTimeout(syncHintToSelection, 30);
+      if (event.key === "Escape") {
+        hideHint();
+        return;
       }
+      onUserActivity();
     },
     true,
   );
-
   document.addEventListener(
     "pointerdown",
     (event) => {
-      if (!hint.classList.contains("show")) return;
       const path = event.composedPath?.() || [];
       if (path.includes(hint)) return;
-      // Let the browser update selection first; syncHintToSelection will dismiss if cleared.
-      clearTimeout(hintHideTimer);
-      hintHideTimer = setTimeout(syncHintToSelection, 40);
+      onUserActivity();
+    },
+    true,
+  );
+  document.addEventListener(
+    "pointerup",
+    (event) => {
+      if (event.button !== 0) return;
+      onUserActivity();
     },
     true,
   );
 
   document.addEventListener("scroll", () => {
-    if (!hint.classList.contains("show") || !hintTarget) return;
+    if (!hint.classList.contains("show") || !hintTarget) {
+      if (selectionPending) onUserActivity();
+      return;
+    }
     const selected = getFieldSelection(hintTarget);
     if (!selected.text) hideHint();
     else positionHint(hintTarget, selected.rect);
