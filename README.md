@@ -1,11 +1,61 @@
 # PromptCoach
 
-PromptCoach helps you spot wasteful prompting habits in Claude Code and Codex.
-It can analyze past Claude Code sessions, produce a readable report, and give
-optional Haiku, GPT Nano, or Gemini Flash feedback before you submit a prompt.
+A CLI and Chrome extension that catches wasteful prompting habits in Claude Code and Codex — built in 48 hours as **UNSW CSESoc Flagship Hackathon 2026 Finalist**.
 
-You do not need to be a developer to set it up. The basic setup takes a few
-minutes and only needs to be completed once.
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-FastAPI-green)](https://fastapi.tiangolo.com/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![npm](https://img.shields.io/badge/npm-promptcoach-red)](https://www.npmjs.com/package/promptcoach)
+
+---
+
+## What it solves
+
+AI coding assistants produce far worse output when prompted sloppily — vague instructions, missing context, no feedback loop. The problem is invisible: you get a mediocre answer, blame the model, and repeat the same pattern next session. PromptCoach makes the feedback loop explicit: analyze your past sessions, score your habits, and get coached on individual prompts before they're sent.
+
+---
+
+## Architecture
+
+The key design decision: **one shared TypeScript analysis core** (`src/shared/core.ts`) that runs identically in both Node.js (the CLI) and the browser (the Chrome extension). The same scoring rules, the same heuristics, the same local analysis — no duplication, no drift between the two surfaces.
+
+```
+src/shared/core.ts          ← shared analysis engine (TypeScript)
+       │
+       ├── src/             CLI: hooks, analyzer, session ingestion, reports
+       │   └── bin/promptcoach.js
+       │
+       └── extension/       Chrome extension: Analyze UI, Gemini dashboard
+           └── lib/promptcoach-core.js   (bundled from core.ts)
+
+apps/api/                   FastAPI backend (PromptLens)
+apps/web/                   Vite frontend (PromptLens)
+db/                         Drizzle ORM schema → Cloudflare D1
+```
+
+**Stack:** TypeScript · Node.js · Next.js · FastAPI · Drizzle ORM · Cloudflare D1 · Chrome Extension APIs · Anthropic / OpenAI / Gemini APIs
+
+---
+
+## Key results
+
+| Feature | Detail |
+|---|---|
+| **Pre-submit coaching** | Add `review:` to any prompt — PromptCoach intercepts it, sends to Haiku/GPT Nano/Gemini Flash for feedback, lets you revise before the coding model ever sees it |
+| **Session analysis** | Ingests Claude Code JSONL transcripts; scores prompts on waste patterns (vagueness, missing context, over-length) |
+| **Multi-provider** | Anthropic Haiku (default), OpenAI GPT Nano, Gemini Flash — swappable via env var |
+| **Local-only mode** | `--sample 0` runs all heuristics locally with zero API calls |
+| **Chrome extension** | Inspect and analyze prompts on AI chat sites; shares the same core as the CLI |
+| **Published** | `npm install --global promptcoach` |
+
+---
+
+## Quickstart
+
+```sh
+npm install --global promptcoach
+promptcoach config set-key        # save your Anthropic/OpenAI/Gemini key
+promptcoach hooks install         # wire into Claude Code + Codex
+promptcoach analyze --wait        # analyze your sessions
+promptcoach report                # see your score and top issues
+```
 
 ## Repository layout
 
@@ -20,6 +70,20 @@ bin/promptcoach.js      CLI entry point
 ```
 
 More detail: [docs/README.md](docs/README.md).
+
+---
+
+## What I'd do next
+
+**VS Code extension** — the Chrome extension works on AI chat sites; a VS Code extension would hook into the editor directly, letting PromptCoach intercept prompts before they hit Copilot or the GitHub Copilot Chat panel. The shared core is already browser-runtime-compatible, so the port would be a packaging problem, not an engine rewrite.
+
+**Team-level analytics** — right now analysis is per-developer. Aggregating anonymous session data across a team (opt-in, local aggregation) would let engineering leads see which prompting patterns correlate with slower task completion — the kind of data an eng manager would actually pay for.
+
+**Prompt pattern library** — instead of just flagging bad prompts, build a searchable library of high-scoring prompt patterns from the user's own history. "You solved a similar refactor problem well on 2025-03-12 — here's that prompt structure." Memory-augmented coaching.
+
+**Fine-tuned coaching model** — Haiku/GPT Nano are good enough for basic coaching, but a model fine-tuned on labeled (prompt, quality score) pairs from PromptCoach's own heuristic output would be faster, cheaper, and domain-specific. The labeled dataset already exists implicitly in every user's analysis history.
+
+---
 
 ## Before you begin
 

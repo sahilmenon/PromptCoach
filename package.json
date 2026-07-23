@@ -9,11 +9,11 @@
   "main": "dist/cli.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Zackkzz/csesoc_flagship_hackathon.git"
+    "url": "git+https://github.com/sahilmenon/PromptCoach.git"
   },
-  "homepage": "https://github.com/Zackkzz/csesoc_flagship_hackathon#readme",
+  "homepage": "https://github.com/sahilmenon/PromptCoach#readme",
   "bugs": {
-    "url": "https://github.com/Zackkzz/csesoc_flagship_hackathon/issues"
+    "url": "https://github.com/sahilmenon/PromptCoach/issues"
   },
   "publishConfig": {
     "access": "public"
